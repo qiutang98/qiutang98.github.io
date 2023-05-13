@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> Vulkan实现Sample Distribution Shadow Maps | 月光下的旅行。 </title>
+  <meta name="description" content="Sample Distribution Shadow Maps">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >Vulkan实现Sample Distribution Shadow Maps</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-09-21T00:00:00Z">September 21, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+      <a href="/categories/flower">Flower</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>Sample Distribution Shadow Maps(SDSM) 和Cascade Shadow Map原理基本一模一样。但SDSM凭借其动态划分Casacde深度优势效果远胜于 CascadeShadowMap。</p>
+<p>如下方红框所示，没有做PCSS，阴影滤波为4x4的PCF，可以看到普通的Cascade阴影纹理精度不足，找出模糊现象。</p>
+<p><img src="/images/SampleDistributionShadowMaps.assets/image-20211128233408207.png" alt="Image"></p>
+<p>下方则是开启了SDSM，可以看到全部都是锐利精确的阴影。</p>
+<p><img src="/images/SampleDistributionShadowMaps.assets/image-20211128233248302.png" alt="Image"></p>
+<p>要在引擎中实现SDSM，首先需要调整一下渲染管线，确保GBuffer在ShadowDepth Pass前渲染。</p>
+<p>渲染完GBuffer后，在Gpu中对深度纹理评估最大深度值和最小深度值。</p>
+<p>我们不需要Mipmap之类的Copy操作，直接使用shared memory在一次ComputeShader Dispatch中全部评估完毕。</p>
+<p>在shared memory之间比对Min Max则是经典的Reduce操作，</p>
+<p>而在多个Group之间比对则是多线程操作，所以需要用到Atomic操作，由于Glsl只支持uint类型，所以我们需要稍微改变一下深度的编码，之后再换回来：</p>
+<p>完整着色器如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">#version 460
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#define WORK_TILE_SIZE 16
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 24 bit
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// 0xFFFFFFFF --&gt; 4,294,967,295
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// SCALE_UINT_7u  4,000,000,000 + 10u
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">const</span> uint SCALE_UINT_7u <span style="color:#f92672">=</span> <span style="color:#ae81ff">4000000000</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> SCALE_UINT_7 <span style="color:#f92672">=</span> <span style="color:#ae81ff">4000000000.0f</span>;
+</span></span><span style="display:flex;"><span>layout (local_size_x <span style="color:#f92672">=</span> WORK_TILE_SIZE,local_size_y <span style="color:#f92672">=</span> WORK_TILE_SIZE,local_size_z <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>) in;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>layout(set <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>) uniform sampler2D inDepthImage;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">DepthRange</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    uint minDepth;
+</span></span><span style="display:flex;"><span>    uint maxDepth;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>layout(set <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>) writeonly buffer DepthRangeBuffer
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	DepthRange range;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">PushConstantData</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    vec2 imageSize;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>layout(push_constant) uniform block
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	PushConstantData pushConstant;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>shared vec2 DepthContainer[WORK_TILE_SIZE <span style="color:#f92672">*</span> WORK_TILE_SIZE]; <span style="color:#75715e">// .x is min, .y is max
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// TODO: use subgroup.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">main</span>()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	uvec2 pos <span style="color:#f92672">=</span> gl_GlobalInvocationID.xy;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    uint idx <span style="color:#f92672">=</span> gl_GlobalInvocationID.x <span style="color:#f92672">+</span> gl_GlobalInvocationID.y <span style="color:#f92672">*</span> gl_NumWorkGroups.x <span style="color:#f92672">*</span> gl_WorkGroupSize.x;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> (idx <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		atomicExchange(range.minDepth, SCALE_UINT_7u <span style="color:#f92672">+</span> <span style="color:#ae81ff">10u</span>);
+</span></span><span style="display:flex;"><span>        atomicExchange(range.maxDepth, <span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> uint linearIndex <span style="color:#f92672">=</span> gl_LocalInvocationID.y <span style="color:#f92672">*</span> WORK_TILE_SIZE <span style="color:#f92672">+</span> gl_LocalInvocationID.x;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// we will set depth image with a point clamp edge sampler.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// So don&#39;t care about border case here.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    vec2 sampleUV <span style="color:#f92672">=</span> (vec2(pos) <span style="color:#f92672">+</span> vec2(<span style="color:#ae81ff">0.5</span>)) <span style="color:#f92672">/</span> pushConstant.imageSize; 
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> depth <span style="color:#f92672">=</span> texture(inDepthImage, sampleUV).x;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(depth <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">0.000001f</span> <span style="color:#f92672">||</span> depth <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0.999999f</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex] <span style="color:#f92672">=</span> vec2(SCALE_UINT_7u <span style="color:#f92672">+</span> <span style="color:#ae81ff">10u</span>,<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">else</span>
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>       DepthContainer[linearIndex] <span style="color:#f92672">=</span> vec2(depth,depth);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (linearIndex <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">128</span>) <span style="color:#75715e">// 16 * 16 = 256 elements to merge
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    {
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].x <span style="color:#f92672">=</span> min(DepthContainer[linearIndex].x, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">128</span>].x);
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].y <span style="color:#f92672">=</span> max(DepthContainer[linearIndex].y, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">128</span>].y);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (linearIndex <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">64</span>) 
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].x <span style="color:#f92672">=</span> min(DepthContainer[linearIndex].x, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">64</span>].x);
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].y <span style="color:#f92672">=</span> max(DepthContainer[linearIndex].y, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">64</span>].y);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (linearIndex <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">32</span>) 
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].x <span style="color:#f92672">=</span> min(DepthContainer[linearIndex].x, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">32</span>].x);
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].y <span style="color:#f92672">=</span> max(DepthContainer[linearIndex].y, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">32</span>].y);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (linearIndex <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">16</span>) 
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].x <span style="color:#f92672">=</span> min(DepthContainer[linearIndex].x, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">16</span>].x);
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].y <span style="color:#f92672">=</span> max(DepthContainer[linearIndex].y, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">16</span>].y);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (linearIndex <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">8</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].x <span style="color:#f92672">=</span> min(DepthContainer[linearIndex].x, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">8</span>].x);
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].y <span style="color:#f92672">=</span> max(DepthContainer[linearIndex].y, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">8</span>].y);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (linearIndex <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">4</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].x <span style="color:#f92672">=</span> min(DepthContainer[linearIndex].x, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">4</span>].x);
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].y <span style="color:#f92672">=</span> max(DepthContainer[linearIndex].y, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">4</span>].y);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (linearIndex <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">2</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].x <span style="color:#f92672">=</span> min(DepthContainer[linearIndex].x, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">2</span>].x);
+</span></span><span style="display:flex;"><span>        DepthContainer[linearIndex].y <span style="color:#f92672">=</span> max(DepthContainer[linearIndex].y, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">2</span>].y);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (linearIndex <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">1</span>) 
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> minDepthUintNear <span style="color:#f92672">=</span> max(<span style="color:#ae81ff">0.0f</span>, min(DepthContainer[linearIndex].x, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>].x) <span style="color:#f92672">*</span> SCALE_UINT_7);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> maxDepthUintNear <span style="color:#f92672">=</span> min(SCALE_UINT_7, max(DepthContainer[linearIndex].y, DepthContainer[linearIndex <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>].y) <span style="color:#f92672">*</span> SCALE_UINT_7 <span style="color:#f92672">+</span> <span style="color:#ae81ff">10.0f</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        atomicMin(range.minDepth, uint(minDepthUintNear));
+</span></span><span style="display:flex;"><span>        atomicMax(range.maxDepth, uint(maxDepthUintNear));
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>SDSM另外一个优点则是它可以完全Gpu Driven，事实上我的引擎也是完全Gpu Driven的，在评估完最大最小值后，直接在下一个Dispatch中设置Cascade Shadow Map的各个Frustum，然后进行剔除，再利用DrawIndirect一次绘制全部的ShadowCaster。</p>
+<h2 id="性能tip">性能Tip</h2>
+<p>由于SDSM的划分Cascade非常激进，所以每帧都要更新每一级Cascade，而普通的Cascade ShadowMap因为比较大的Cascade一般离视线中央很远，可以隔2帧或者3帧更新一次作为性能优化。所以SDSM的性能评估是低于常规的Cascade ShadowMap的。</p>
+<p>另外，如果引擎的Shadow Depth不是Gpu Driven的，SDSM的性能堪忧，Depth Min Max的评估结果必须延后一帧，否则cpu回读的时间会拖累整个gpu渲染速度。 我之前已经在UE4.26.2中实现过SDSM了，性能并不理想。（Cpu 回读的时间与 SSAO的评估时间基本一致 ~1.2 - 2.0ms）。</p>
+<p>而UE5 则是GpuDriven的，但是他们另外实现了 Virtual Shadow Map，似乎没有太多的理由继续实现 SDSM了。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+        <a href="/tags/flower">Flower</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/">Vulkan CascadeShadowMap中的常见问题与解决方案</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/">VkWriteDescriptorSet内存堆释放问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/">大型场景下的Vulkan CascadeShadowMap功能开发</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/">Vulkan中的实时软阴影与硬件优化</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/">Vulkan利用SpirV-Cross提取Shader反射信息来自动构建MeshDrawCommand</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

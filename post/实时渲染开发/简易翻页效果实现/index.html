@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 简单翻页效果 | 月光下的旅行。 </title>
+  <meta name="description" content="简单翻页效果的实现">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >简单翻页效果</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2020-07-03T00:00:00Z">July 03, 2020</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>翻页效果主要分为顶点着色器动画和UI遮罩动画。我简单的在Unity上分别实现这两个，然后移植到UE4上面去。</p>
+<h2 id="顶点着色器动画">顶点着色器动画</h2>
+<p>顶点着色器实现实际上就是网格顶点变形动画，片元着色器就是简单的采样纹理着色，注意正面与背面的区别，重点在于顶点着色器，它的工作内容可以分为两大部分：</p>
+<ol>
+<li>顶点翻页变形，选择合适的圆锥曲线或者正弦曲线函数做顶点变化。</li>
+<li>将顶点绕轴旋转合适的角度。</li>
+</ol>
+<p>我首先实现步骤2，然后再实现步骤1。</p>
+<p>首先是<strong>将顶点绕轴旋转合适的角度</strong>，输入是当前页面的旋转角度，然后将所有的顶点绕着装订轴旋转该角度。</p>
+<p>输入模型是一个平面模型，10 * 10的平面网格，默认中心点在原点，因此需要将所有顶点都平移一段距离，使得旋转中心轴线在网格的左边或者右边。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#75715e">// 旋转前将所有顶点移动到装订线处
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>v.vertex.x <span style="color:#f92672">-=</span> _PinLine;
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 在这里旋转所有顶点
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// 旋转后再移动回原位置
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>v.vertex.x <span style="color:#f92672">+=</span> _PinLine;
+</span></span></code></pre></div><p>然后旋转部分是绕z轴旋转，旋转矩阵为：</p>
+<p><img src="/images/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0.assets/Image.png" alt="Image"></p>
+<p>转换为代码是：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#75715e">// 绕z轴旋转
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">float</span> angle_rad <span style="color:#f92672">=</span> radians(<span style="color:#f92672">-</span>_Angle);
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> s;<span style="color:#66d9ef">float</span> c;sincos(angle_rad,s,c);
+</span></span><span style="display:flex;"><span>float2 rotate_ret <span style="color:#f92672">=</span> v.vertex.xy;
+</span></span><span style="display:flex;"><span>v.vertex.x <span style="color:#f92672">=</span> rotate_ret.x <span style="color:#f92672">*</span> c <span style="color:#f92672">+</span> rotate_ret.y <span style="color:#f92672">*</span> s;
+</span></span><span style="display:flex;"><span>v.vertex.y <span style="color:#f92672">=</span> rotate_ret.y <span style="color:#f92672">*</span> c <span style="color:#f92672">-</span> rotate_ret.x <span style="color:#f92672">*</span> s;
+</span></span></code></pre></div><p>我这里把矩阵展开了，实际上是一样的效果。</p>
+<p>现在实现平面网格沿着z轴旋转的效果了。</p>
+<p>接下来加上顶点的变形。</p>
+<p>根据你选择数学函数的不同，顶点变形的效果也会呈现不同的形状，简单的有正弦曲面函数，复杂的有圆锥曲面函数，也可以用多个频率的正弦曲面函数叠加得到一个好看的形状，我这里试了正弦函数和圆锥曲面函数：</p>
+<p>首先是正弦函数：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#75715e">// 在这里执行顶点变形动画
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">float</span> factor <span style="color:#f92672">=</span> saturate(<span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> abs(<span style="color:#ae81ff">90</span> <span style="color:#f92672">-</span> _Angle) <span style="color:#f92672">/</span> <span style="color:#ae81ff">90</span>);
+</span></span><span style="display:flex;"><span>v.vertex.y <span style="color:#f92672">-=</span> _Factor <span style="color:#f92672">*</span> sin(v.vertex.x <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.4f</span> <span style="color:#f92672">-</span> _FactorY <span style="color:#f92672">*</span> v.vertex.x) <span style="color:#f92672">*</span> factor;
+</span></span><span style="display:flex;"><span>v.vertex.x <span style="color:#f92672">-=</span> v.vertex.x <span style="color:#f92672">*</span> factor <span style="color:#f92672">*</span> _FactorX;
+</span></span></code></pre></div><p>这里直接根据 y = sin(nx) 来计算函数曲线。得到的翻页曲面也是正弦形状的。</p>
+<p>我还添加了系数控制的FactorX 和 FactorY 以及总的y变形系数，便于自定义变形效果。</p>
+<p>得到的翻页效果如下：</p>
+<p><img src="/images/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0.assets/Image-1604592286507.png" alt="Image"></p>
+<p>多页面叠加时可能会有Z-Fighting，这里在前页面Pass渲染时添加上一个Offset来避免。</p>
+<p>注：关于这个Offset，我查到的资料有：</p>
+<p>Unity论坛：    <a href="https://forum.unity3d.com/threads/offset-parameters.23281/">https://forum.unity3d.com/threads/offset-parameters.23281/</a></p>
+<p>或者KH组的解释：    <a href="https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glPolygonOffset.xhtml">https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glPolygonOffset.xhtml</a></p>
+<p>也就是绘制时，每一个片元的深度值都会增加一个偏移量offset，它的计算方式：
+$$
+offset = (m * factor) + (r * units)
+$$
+其中，m是多边形各边深度的斜率中的最大值，它在光栅化阶段计算得到。在光栅化阶段，若一个多边形越是与近裁剪面平行，每个边的深度变化越接近0，m就越接近0。r是NDC空间下的最小深度单位，它是图形Api设置的。</p>
+<p>m的详细计算公式如下：https://www.inf.ufes.br/~thomas/graphics/OpenGL/docs/glspec1.1/node58.html    核心步骤为：</p>
+<p><img src="/images/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0.assets/Image-1604592368801.png" alt="Image"></p>
+<p>一个大于0 的 offset 会把模型推更远一点的位置，一个小于0的offset 会把模型拉近。</p>
+<p>Unity Shader的Offset有两个参数，第一个是因子factor，第二个是单位units。</p>
+<p>渲染页面时，为避免与其他重叠页面产生z-fight，于是使用Offset，我这里想让Offset 按照多边形的深度斜率变化递增，并且最少offset一个单位的深度，所以设: Offset -1,-1    当前完整的Shader代码如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>Shader <span style="color:#e6db74">&#34;GraphicsLibrary/FlipPaper/SineFlip&#34;</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    Properties
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        _FrontPage (<span style="color:#e6db74">&#34;Page Front&#34;</span>, <span style="color:#ae81ff">2</span>D) <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;white&#34;</span> {}
+</span></span><span style="display:flex;"><span>        _BackPage  (<span style="color:#e6db74">&#34;Page Back&#34;</span> , <span style="color:#ae81ff">2</span>D) <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;white&#34;</span> {}
+</span></span><span style="display:flex;"><span>        _Angle (<span style="color:#e6db74">&#34;Curl Angle&#34;</span>, Range(<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">180</span>)) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>        _PinLine (<span style="color:#e6db74">&#34;Pin Line&#34;</span>, <span style="color:#66d9ef">float</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>        _Amount(<span style="color:#e6db74">&#34;Amount&#34;</span>,Range(<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">2</span>)) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>        _FactorX(<span style="color:#e6db74">&#34;Factor X&#34;</span>,Range(<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">1</span>)) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>        _FactorY(<span style="color:#e6db74">&#34;Factor Y&#34;</span>,Range(<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">1</span>)) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    CGINCLUDE
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;UnityCG.cginc&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">appdata</span>
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        float4 vertex : POSITION;
+</span></span><span style="display:flex;"><span>        float2 uv : TEXCOORD0;
+</span></span><span style="display:flex;"><span>    };
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">v2f</span>
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        float4 pos : SV_POSITION;
+</span></span><span style="display:flex;"><span>        float2 uv : TEXCOORD0;
+</span></span><span style="display:flex;"><span>    };
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    sampler2D _FrontPage;
+</span></span><span style="display:flex;"><span>    float4 _FrontPage_ST;
+</span></span><span style="display:flex;"><span>    sampler2D _BackPage;
+</span></span><span style="display:flex;"><span>    float4 _BackPage_ST;
+</span></span><span style="display:flex;"><span>    half _Angle;
+</span></span><span style="display:flex;"><span>    half _PinLine;
+</span></span><span style="display:flex;"><span>    half _Amount;
+</span></span><span style="display:flex;"><span>    half _FactorX;
+</span></span><span style="display:flex;"><span>    half _FactorY;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">inline</span> v2f <span style="color:#a6e22e">vert_factory</span> (appdata v,<span style="color:#66d9ef">bool</span> isFront)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        v2f o;
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 旋转前将所有顶点移动到装订线处
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        v.vertex.x <span style="color:#f92672">+=</span> _PinLine;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 在这里执行顶点变形动画
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">float</span> factor <span style="color:#f92672">=</span> saturate(<span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> abs(<span style="color:#ae81ff">90</span> <span style="color:#f92672">-</span> _Angle) <span style="color:#f92672">/</span> <span style="color:#ae81ff">90</span>);
+</span></span><span style="display:flex;"><span>        v.vertex.y <span style="color:#f92672">-=</span> _Amount <span style="color:#f92672">*</span> sin(v.vertex.x <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.4f</span> <span style="color:#f92672">-</span> _FactorY <span style="color:#f92672">*</span> v.vertex.x) <span style="color:#f92672">*</span> factor;
+</span></span><span style="display:flex;"><span>        v.vertex.x <span style="color:#f92672">-=</span> v.vertex.x <span style="color:#f92672">*</span> factor <span style="color:#f92672">*</span> _FactorX;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 绕z轴旋转
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">float</span> angle_rad <span style="color:#f92672">=</span> radians(<span style="color:#f92672">-</span>_Angle);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> s;<span style="color:#66d9ef">float</span> c;sincos(angle_rad,s,c);
+</span></span><span style="display:flex;"><span>        float2 rotate_ret <span style="color:#f92672">=</span> v.vertex.xy;
+</span></span><span style="display:flex;"><span>        v.vertex.x <span style="color:#f92672">=</span> rotate_ret.x <span style="color:#f92672">*</span> c <span style="color:#f92672">+</span> rotate_ret.y <span style="color:#f92672">*</span> s;
+</span></span><span style="display:flex;"><span>        v.vertex.y <span style="color:#f92672">=</span> rotate_ret.y <span style="color:#f92672">*</span> c <span style="color:#f92672">-</span> rotate_ret.x <span style="color:#f92672">*</span> s;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 旋转后再移动回原位置
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        v.vertex.x <span style="color:#f92672">-=</span> _PinLine;
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        o.pos <span style="color:#f92672">=</span> UnityObjectToClipPos(v.vertex);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span>(isFront)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            o.uv <span style="color:#f92672">=</span> TRANSFORM_TEX(v.uv, _FrontPage);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">else</span>
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            o.uv <span style="color:#f92672">=</span> TRANSFORM_TEX(v.uv, _BackPage);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> o;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    ENDCG
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    SubShader
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        Pass
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            Name <span style="color:#e6db74">&#34;FRONT&#34;</span>
+</span></span><span style="display:flex;"><span>            Offset <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>,<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>            Tags{ <span style="color:#e6db74">&#34;LightMode&#34;</span> <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;LightweightForward&#34;</span> }
+</span></span><span style="display:flex;"><span>            Cull Back
+</span></span><span style="display:flex;"><span>            CGPROGRAM
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">#pragma vertex vert_front
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#75715e">#pragma fragment frag_front
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            v2f vert_front(appdata v)
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">vert_factory</span>(v,true);
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            fixed4 <span style="color:#a6e22e">frag_front</span>(v2f i) <span style="color:#f92672">:</span> SV_Target
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">return</span> tex2D(_FrontPage,i.uv);
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            ENDCG
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        Pass
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            Name <span style="color:#e6db74">&#34;BACK&#34;</span>
+</span></span><span style="display:flex;"><span>            Tags{ <span style="color:#e6db74">&#34;LightMode&#34;</span> <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;SRPDefaultUnlit&#34;</span> }
+</span></span><span style="display:flex;"><span>            Cull Front
+</span></span><span style="display:flex;"><span>            Offset <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>,<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>            CGPROGRAM
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">#pragma vertex vert_back
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#75715e">#pragma fragment frag_back
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            v2f vert_back(appdata v)
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">vert_factory</span>(v,false);
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            fixed4 <span style="color:#a6e22e">frag_back</span>(v2f i) <span style="color:#f92672">:</span> SV_Target
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">return</span> tex2D(_BackPage,i.uv);
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            ENDCG
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>正弦函数曲面用来模拟书页从中间开始翻很合适，但是如果想要模拟从边角开始翻页，就需要换一个变形方程，比较合适的是圆锥曲面方程，使用它计算页面在圆锥曲面上的投影位置，原理示意图如下：</p>
+<p><img src="/images/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0.assets/Image-1604592482220.png" alt="Image"></p>
+<p>数学原理在http://www2.parc.com/istl/groups/uir/publications/items/UIR-2004-10-Hong-DeformingPages.pdf中。</p>
+<p>现在在顶点着色器中已知任意网格点的坐标P，参数A（我称它为圆锥顶点ConeTop），参数θ（我称它为圆锥旋转角ConeRotateAngle），那么，点O经过圆锥曲面变换后，它落在圆锥面上的坐标T表示如下：</p>
+<p><img src="/images/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0.assets/Image-1604592526377.png" alt="Image"></p>
+<p>其中：</p>
+<p><img src="/images/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0.assets/Image-1604592536274.png" alt="Image"></p>
+<p>转化为着色器代码如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// 在这里执行顶点变形动画
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">float</span> theta_rad <span style="color:#f92672">=</span> radians(_ConeRotateAngle);
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> R <span style="color:#f92672">=</span> sqrt(v.vertex.x <span style="color:#f92672">*</span> v.vertex.x <span style="color:#f92672">+</span> pow(v.vertex.z <span style="color:#f92672">-</span> _ConeTop,<span style="color:#ae81ff">2</span>));
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> r <span style="color:#f92672">=</span> R <span style="color:#f92672">*</span> sin(theta_rad);
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> alpha <span style="color:#f92672">=</span> asin(v.vertex.x <span style="color:#f92672">/</span> R);
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> beta <span style="color:#f92672">=</span> alpha <span style="color:#f92672">/</span> sin(theta_rad);
+</span></span><span style="display:flex;"><span>v.vertex.x <span style="color:#f92672">=</span> r <span style="color:#f92672">*</span> sin(beta);
+</span></span><span style="display:flex;"><span>v.vertex.z <span style="color:#f92672">=</span> R <span style="color:#f92672">+</span> _ConeTop  <span style="color:#f92672">-</span> r <span style="color:#f92672">*</span> (<span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> cos(beta)) <span style="color:#f92672">*</span> sin(theta_rad);
+</span></span><span style="display:flex;"><span>v.vertex.y <span style="color:#f92672">=</span> <span style="color:#f92672">-</span> r <span style="color:#f92672">*</span> (<span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> cos(beta)) <span style="color:#f92672">*</span> cos(theta_rad);
+</span></span></code></pre></div><p>注意这里z和y与公式中不同，因为Unity的y轴向上，所以交换yz。</p>
+<p>圆锥曲面翻页效果如下：</p>
+<p><img src="/images/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0.assets/Image-1604592572956.png" alt="Image"></p>
+<p>为了方便控制，在使用圆锥曲线翻页时，需要建立起Angle和A、θ的函数关系，我这里直接用Angle的值在0-180中smoothstep，然后lerp + clamp计算出A和θ。</p>
+<h2 id="ui遮罩动画">UI遮罩动画</h2>
+<p>UI遮罩动画分两种，一种是直接在UI上卡动画帧，然后每帧对活动页的Image长方形做Shear剪切变换，这个比较简单，然后注意的是活动页采样的纹理需要额外绘制一张翻页变形的书页纹理(然后我们项目最后选用的也是这种做法)。</p>
+<p>第二种则是用Mask遮罩挡住当前翻页部分，伪装成3D翻页，unitybookpagecurl就是这种做法。</p>
+<p>其原理是：https://www.cnblogs.com/JinT-Hwang/p/9274984.html</p>
+<p>他的博客看他的原理就行，代码建议直接看https://github.com/Dandarawy/Unity3DBookPageCurl</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/dcc/3dsmax%E8%A7%86%E5%8F%A3shader%E4%B8%8Eunity%E5%90%8C%E6%AD%A5/">3dsMax视口shader与unity同步</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> Mipmap颤动的AlphaClip解决边缘杂色问题 | 月光下的旅行。 </title>
+  <meta name="description" content="Mipmap颤动的AlphaClip解决边缘杂色问题">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mipmap%E9%A2%A4%E5%8A%A8%E7%9A%84alphaclip%E8%A7%A3%E5%86%B3%E8%BE%B9%E7%BC%98%E6%9D%82%E8%89%B2%E9%97%AE%E9%A2%98/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >Mipmap颤动的AlphaClip解决边缘杂色问题</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-10-07T00:00:00Z">October 07, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>有一种奇怪的现象：</p>
+<p>在我的游戏引擎中有一种奇怪的现象，在BaseColor调试开启时：</p>
+<p><img src="/images/Mipmap%E9%A2%A4%E5%8A%A8%E7%9A%84AlphaClip%E8%A7%A3%E5%86%B3%E8%BE%B9%E7%BC%98%E6%9D%82%E8%89%B2%E9%97%AE%E9%A2%98.assets/image-20211007195642844.png" alt="Image"></p>
+<p>我把它称做边缘杂色错误。</p>
+<p>在Shader中将Clip阈值提高到0.99f可以有效减少这种错误：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">if</span>(baseColorTex.a <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">0.99f</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	discard;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>但在远处看时，植被完全被剃掉了。</p>
+<p><img src="/images/Mipmap%E9%A2%A4%E5%8A%A8%E7%9A%84AlphaClip%E8%A7%A3%E5%86%B3%E8%BE%B9%E7%BC%98%E6%9D%82%E8%89%B2%E9%97%AE%E9%A2%98.assets/image-20211007200047616.png" alt="Image"></p>
+<p>我能猜测出来这是因为高级的mipmap没有对alpha通道做任何特殊的处理，我生成mipmap时是用的最简单的Box滤波器。</p>
+<p>(2023年更新): 简单的Alpha的mipmap会导致其整体coverage下降，在Nv texture的处理中会计算Mip0的alpha coverage，然后每个mipmap层级都会乘上一个倍数让Alpha Coverage保持一致性。</p>
+<p>我不想那么麻烦，于是想了个简单的补救方案：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> mipmapLevel <span style="color:#f92672">=</span> textureQueryLod(BaseColorTexture, inUV0).x;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> mipmapDitherFactor <span style="color:#f92672">=</span> min(<span style="color:#ae81ff">0.8f</span>, mipmapLevel <span style="color:#f92672">/</span> MAX_MIPMAP);
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">if</span>(baseColorTex.a <span style="color:#f92672">&lt;</span> (<span style="color:#ae81ff">0.99f</span> <span style="color:#f92672">-</span> mipmapDitherFactor))
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	discard;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>效果似乎还不错？？</p>
+<p><img src="/images/Mipmap%E9%A2%A4%E5%8A%A8%E7%9A%84AlphaClip%E8%A7%A3%E5%86%B3%E8%BE%B9%E7%BC%98%E6%9D%82%E8%89%B2%E9%97%AE%E9%A2%98.assets/image-20211007200518733.png" alt="Image"></p>
+<p><img src="/images/Mipmap%E9%A2%A4%E5%8A%A8%E7%9A%84AlphaClip%E8%A7%A3%E5%86%B3%E8%BE%B9%E7%BC%98%E6%9D%82%E8%89%B2%E9%97%AE%E9%A2%98.assets/image-20211007200530790.png" alt="Image"></p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/">VkWriteDescriptorSet内存堆释放问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-ilc%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E4%B8%8E%E6%B8%B2%E6%9F%93/">UE4.26 ILC加载与渲染</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/">UE4.26 Lightmap从烘焙到渲染</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/">Vulkan中的实时软阴影与硬件优化</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%A4%E7%A7%8D%E8%8A%B1%E5%93%A8%E4%BD%86%E5%AE%9E%E7%94%A8%E7%9A%84%E5%85%A8%E5%B1%8Fquad%E7%BB%98%E5%88%B6%E6%96%B9%E6%B3%95/">两种好用的全屏Quad绘制方法</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

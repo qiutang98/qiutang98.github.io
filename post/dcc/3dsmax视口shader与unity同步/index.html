@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 3dsMax视口shader与unity同步 | 月光下的旅行。 </title>
+  <meta name="description" content="3dsMax视口shader与unity同步">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/dcc/3dsmax%E8%A7%86%E5%8F%A3shader%E4%B8%8Eunity%E5%90%8C%E6%AD%A5/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >3dsMax视口shader与unity同步</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2020-06-09T00:00:00Z">June 09, 2020</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/dcc">DCC</a>
+      &nbsp;
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>首先给出链接：https://github.com/HongHuaFu/Unity-3dsMax-ShaderSamples</p>
+<p><img src="/images/%E4%B8%9D%E7%BB%B8%E3%80%81%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9.assets/Max.gif" alt="Image"></p>
+<p>Max,Maya,Houdini这些软件都支持视口的自定义shader，而在卡通渲染中，为美术们编写配套的着色器可以帮助美术更好的调节顶点色描边粗细、脸部修改法线阴影等效果。</p>
+<p>3ds Max支持自定义的HLSL Shader，但是官方给出来的着色器样例大多基于DX9，而现在Max默认的渲染器是DX11，虽然可以把渲染器版本降低到DX9，但是我想大家应该都不愿意这么做。</p>
+<p>DX11版本的HLSL着色器语法改变比较大，我这里写了几个基本的Max Shader供参考。</p>
+<p>我使用了Unity风格的CG语言来编写。</p>
+<p>一共包含三个实例着色器：</p>
+<ol>
+<li>
+<p>Texture：仅仅是采样并显示贴图。</p>
+</li>
+<li>
+<p>SimpleToon：Roystan的Unity Toon着色器的Max版本~</p>
+</li>
+<li>
+<p>PBR_IBL：Epic Games Unreal Engine的PBR IBL的Max版本~</p>
+</li>
+</ol>
+<p>注：这些着色器也可以参考：官方的HLSL着色器在3ds Max安装目录下的 hardwareshaders文件夹下可以找到，里面是Max本身用到的DX Shader。</p>
+<p>注意点（就目前我所总结的）</p>
+<p>Max Shader能做到什么？</p>
+<ol>
+<li>多Pass渲染（在卡通渲染描边时用到）</li>
+<li>Blend、Cull、Stencil Mask等状态</li>
+<li>lights信息获取（用于前向渲染）</li>
+<li>几何、细分着色器（DX11 SM5.0）</li>
+</ol>
+<p>Max Shader不能做到什么？</p>
+<ol>
+<li>渲染次序控制(半透明排序！)</li>
+<li>GBuffer无法获取（MaxPipeline中提供了GBuffer，用户直接是获取不到的）</li>
+</ol>
+<p>存疑：</p>
+<ol>
+<li>shadow Map（模拟模型的自阴影时用到，但是按照Nvidia的Shadowmap写法是无法通过编译的，切换到DX9也无法正常着色）。</li>
+</ol>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/dcc">DCC</a>
+        &nbsp;
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

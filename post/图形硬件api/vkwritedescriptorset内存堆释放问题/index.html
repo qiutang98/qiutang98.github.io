@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> VkWriteDescriptorSet内存堆释放问题 | 月光下的旅行。 </title>
+  <meta name="description" content="VkWriteDescriptorSet内存堆释放问题">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >VkWriteDescriptorSet内存堆释放问题</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-07-10T00:00:00Z">July 10, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+      <a href="/categories/flower">Flower</a>
+      &nbsp;
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>Vulkan更新描述符集信息时需要填写VkWriteDescriptorSet结构体，然后调用vkUpdateDescriptorSets将其推送到GPU端。</p>
+<p>创建VkWriteDescriptorSet时，一定要确保该VkWriteDescriptorSet与vkUpdateDescriptorSets调用位于同一个作用域！！</p>
+<p>这里的同一个作用域，是指位于同一个函数作用域！！存在类成员变量中都不可以！！</p>
+<p>举个例子：</p>
+<p>假设有一个VulkanDescriptorFactory的工厂类，里面缓存了VkWriteDescriptorSet成员变量，假如在Add函数中添加对应的VkWriteDescriptorSet，在Build函数中构建DescriptorSet：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">VulkanDescriptorFactory</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>VkWriteDescriptorSet<span style="color:#f92672">&gt;</span> mWrite{ };   
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">void</span> Add()
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        VkWriteDescriptorSet newWrite{};
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        mWrite.push_back(newWtire);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">Build</span>()
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        vkUpdateDescriptorSets(<span style="color:#f92672">*</span>mAllocator<span style="color:#f92672">-&gt;</span>device,<span style="color:#66d9ef">static_cast</span><span style="color:#f92672">&lt;</span><span style="color:#66d9ef">uint32_t</span><span style="color:#f92672">&gt;</span>(mWrite.size()),mWrite.data(),<span style="color:#ae81ff">0</span>,<span style="color:#66d9ef">nullptr</span>);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>理论上看上去没什么毛病，但实际运行起来，Visual Studio会把mWrite中除了最后一项的所有VkWriteDescriptorSet中的Buffer Pointer数据都释放掉！也就是说，调用Build时mWrite中除了最后一项，前面的imgeInfo和BufferInfo全部堆内存地址都为0xdddddddddd。</p>
+<p>正确的做法应该是在Add的时候用一个中间结构体Cache住VkWriteDescriptorSet的信息，在vkUpdateDescriptorSets前才构建VkWriteDescriptorSet，这样就不会有堆释放的问题了：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">DescriptorWriteContainer</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	VkDescriptorImageInfo imgInfo;
+</span></span><span style="display:flex;"><span>	VkDescriptorBufferInfo bufInfo;
+</span></span><span style="display:flex;"><span>	uint32 binding;
+</span></span><span style="display:flex;"><span>	VkDescriptorType type;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">bool</span> isImg <span style="color:#f92672">=</span> false;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">Add</span>()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    DescriptorWriteContainer descriptorWrite{};
+</span></span><span style="display:flex;"><span>    descriptorWrite.isImg <span style="color:#f92672">=</span> false;
+</span></span><span style="display:flex;"><span>    descriptorWrite.bufInfo <span style="color:#f92672">=</span> <span style="color:#f92672">*</span>bufferInfo;
+</span></span><span style="display:flex;"><span>    descriptorWrite.type <span style="color:#f92672">=</span> type;
+</span></span><span style="display:flex;"><span>    descriptorWrite.binding <span style="color:#f92672">=</span> binding;
+</span></span><span style="display:flex;"><span>    mDescriptorWriteBufInfos.push_back(descriptorWrite);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">Build</span>()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>VkWriteDescriptorSet<span style="color:#f92672">&gt;</span> writes{};
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> dc : mDescriptorWriteBufInfos)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        VkWriteDescriptorSet newWrite{};
+</span></span><span style="display:flex;"><span>        newWrite.sType <span style="color:#f92672">=</span> VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+</span></span><span style="display:flex;"><span>        newWrite.pNext <span style="color:#f92672">=</span> <span style="color:#66d9ef">nullptr</span>;
+</span></span><span style="display:flex;"><span>        newWrite.descriptorCount <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        newWrite.descriptorType <span style="color:#f92672">=</span> dc.type;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span>(dc.isImg)
+</span></span><span style="display:flex;"><span>            newWrite.pImageInfo <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span>dc.imgInfo;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">else</span>
+</span></span><span style="display:flex;"><span>            newWrite.pBufferInfo <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span>dc.bufInfo;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        newWrite.dstBinding <span style="color:#f92672">=</span> dc.binding;
+</span></span><span style="display:flex;"><span>        newWrite.dstSet <span style="color:#f92672">=</span> <span style="color:#f92672">*</span>set;
+</span></span><span style="display:flex;"><span>        writes.push_back(newWrite);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    vkUpdateDescriptorSets(<span style="color:#f92672">*</span>mAllocator<span style="color:#f92672">-&gt;</span>device,<span style="color:#66d9ef">static_cast</span><span style="color:#f92672">&lt;</span><span style="color:#66d9ef">uint32_t</span><span style="color:#f92672">&gt;</span>(writes.size()),writes.data(),<span style="color:#ae81ff">0</span>,<span style="color:#66d9ef">nullptr</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> true;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div>
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/flower">Flower</a>
+        &nbsp;
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/">Vulkan中的实时软阴影与硬件优化</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/">大型场景下的Vulkan CascadeShadowMap功能开发</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/">Vulkan利用SpirV-Cross提取Shader反射信息来自动构建MeshDrawCommand</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-ilc%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E4%B8%8E%E6%B8%B2%E6%9F%93/">UE4.26 ILC加载与渲染</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/">UE4.26 Lightmap从烘焙到渲染</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

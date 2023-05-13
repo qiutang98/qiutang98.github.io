@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 地形纹理拼接混合实现更多的地形细节 | 月光下的旅行。 </title>
+  <meta name="description" content="地形纹理拼接混合实现更多的地形细节">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%9C%B0%E5%9B%BE%E7%BA%B9%E7%90%86%E6%8B%BC%E6%8E%A5%E6%B7%B7%E5%90%88%E5%AE%9E%E7%8E%B0%E6%9B%B4%E5%A4%9A%E7%9A%84%E5%9C%B0%E5%BD%A2%E7%BB%86%E8%8A%82/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >地形纹理拼接混合实现更多的地形细节</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2020-12-06T00:00:00Z">December 06, 2020</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>把多个地形纹理合并成图集，渲染时采样对应索引混合，可以做到减少带宽消耗的同时实现丰富的地形纹理混合细节。</p>
+<p><img src="/images/%E5%9C%B0%E5%9B%BE%E7%BA%B9%E7%90%86%E6%8B%BC%E6%8E%A5%E6%B7%B7%E5%90%88.assets/image-20201206103701243.png" alt="Image"></p>
+<p>其实这是GPU Pro2上详细分享的老地形技术了，实施起来也没太大问题，但值得提防的地方如下：</p>
+<ol>
+<li>自定义Mipmap级别。</li>
+<li>纹理拼接Padding。</li>
+<li>权重绘制方式更变。</li>
+</ol>
+<p>自定义Mipmap级别是Opengl白皮书中给出的计算公式，实际上Unity论坛也给出了具体计算公式：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">mip_map_level</span>(in float2 texture_coordinate) <span style="color:#75715e">// in texel units
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>{
+</span></span><span style="display:flex;"><span>  float2  dx_vtc  <span style="color:#f92672">=</span> ddx(texture_coordinate);
+</span></span><span style="display:flex;"><span>  float2  dy_vtc  <span style="color:#f92672">=</span> ddy(texture_coordinate);
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">float</span> delta_max_sqr <span style="color:#f92672">=</span> max(dot(dx_vtc, dx_vtc), dot(dy_vtc, dy_vtc));
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">return</span> <span style="color:#ae81ff">0.5</span> <span style="color:#f92672">*</span> log2(delta_max_sqr);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>输入是 texel uint，即每块瓦片纹理的尺寸 * 顶点输入uv。</p>
+<p>另外，使用该函数算出来的mipmap和硬件自己算出来的mipmap级别有差别，使用该公式计算出来的级别，mip0覆盖的区域比原本的要少，导致地形看上去会比较模糊，在最后添加一个mipmap偏移值Bias可以解决这问题，但是也不能偏移太大，否则mip0会覆盖原本mip1应该占有的区域，造成高频采样噪音。</p>
+<p>纹理拼接Padding解决方式比较简单，把原纹理uv缩放并且Clamp采样uv为0-1即可，然后渲染到RT，即可在边缘填充Padding，然后地形渲染时再注意缩放偏移采样。</p>
+<p>纹理拼接可以直接在Photoshop中进行，下采样生成mipmap链时滤波器用Box或Kris都行。</p>
+<p>最后值得一提的时地图权重保存方式，Pro上的地图混合是连续的，也就是只会相邻地图块混合，但是我们更希望任意两个地形混合，因此需要单独存一个地形纹理索引图，并且滤波模式为点过滤（防止插值），因此没办法和权重图放在一张图里了，因为权重图必须有插值。</p>
+<p>最后是性能，实际上如果没有在带宽上获得收益，它会比直接采样原地形贴图来得更慢，原因是因为TileMap采样产生了大量的Texture CacheMiss。</p>
+<p>但是当采样纹理数成为了带宽瓶颈，特别是移动端，这技术还是很值得引入的。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/ue4%E5%8D%A1%E9%80%9A%E6%B8%B2%E6%9F%93%E5%B0%9D%E8%AF%95/">UE4卡通渲染尝试</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E9%99%8D%E5%88%86%E8%BE%A8%E7%8E%87%E7%A6%BB%E5%B1%8F%E5%8D%8A%E9%80%8F%E6%98%8E%E6%B8%B2%E6%9F%93%E7%9A%84%E5%9D%91/">UE4.22移动端降分辨率离屏半透明渲染的坑</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22-%E9%92%88%E5%AF%B9%E6%8D%8F%E8%84%B8%E7%9A%84shadowmap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92%E7%AE%97%E6%B3%95%E5%86%8D%E6%94%B9%E8%BF%9B/">虚幻4捏脸的ShadowMap投影包围盒算法再改进</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E5%AE%9E%E7%8E%B0grabpass%E6%8A%93%E5%B1%8F/">虚幻4.22移动端实现GrabPass抓屏</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B7%BB%E5%8A%A0%E4%B8%80%E6%AC%A1z-prepass/">虚幻引擎4.22手机添加一次Z-PrePass</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

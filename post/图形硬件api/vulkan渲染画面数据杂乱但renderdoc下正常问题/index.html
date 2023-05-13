@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 关于Vulkan渲染画面数据杂乱但Renderdoc下正常问题 | 月光下的旅行。 </title>
+  <meta name="description" content="Vulkan渲染画面数据杂乱但Renderdoc下正常问题">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >关于Vulkan渲染画面数据杂乱但Renderdoc下正常问题</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-11-09T00:00:00Z">November 09, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+      <a href="/categories/flower">Flower</a>
+      &nbsp;
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>主要原因总结如下：</p>
+<ol>
+<li>RenderDoc在每个Pass后会强制把FrameBuffer存储下来方便profile可视化每个drawcall的数据。</li>
+<li>RenderDoc会给应用程序插入帧同步。</li>
+</ol>
+<p>对于第一种情况，如果Renderpass的framestop operation错误设为了VK_ATTACHMENT_LOAD_OP_DONT_CARE，正常渲染时将会因为没有存储framebuffer数据导致下一个用到这个framebuffer的pass渲染出错误的结果，典型的就有shadowmap pass没有存储深度，导致下一个lighting pass出现错误的结果。</p>
+<p>第二种情况可能会修复程序中的两种bug。</p>
+<p>一是commandbuffer没有做好barrier的情况，因为renderdoc本身会插入多个barrier确保每次profile按顺序执行，这可能会导致renderdoc下启动原本vulkan程序没有做好barrier的问题被恰好修复了。</p>
+<p>二是Mailbox的丢弃帧问题，如果gpu同时处理三帧以上的数据，极其容易出现多帧共享使用的Imgae如Gbuffer，被填入错误的垃圾数据导致画面撕裂。把同时处理帧数改到2或者换成FIFO类型可以解决这个问题。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/flower">Flower</a>
+        &nbsp;
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/">Vulkan异步队列与异步纹理上传</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/">VkWriteDescriptorSet内存堆释放问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/">Vulkan中的实时软阴影与硬件优化</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/">Vulkan实现Sample Distribution Shadow Maps</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/">Vulkan CascadeShadowMap中的常见问题与解决方案</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 高质量静态稳定的TAA改进 | 月光下的旅行。 </title>
+  <meta name="description" content="高质量静态稳定的TAA改进">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E9%AB%98%E8%B4%A8%E9%87%8F%E7%9A%84taa/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >高质量静态稳定的TAA改进</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2022-04-27T00:00:00Z">April 27, 2022</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>在被TAA中的静态Flicking折磨了两个月后，终于决定花一些来时间来修复这些问题。</p>
+<p><img src="/images/TAAH/image-20220427232510320.png" alt="image-20220427232510320"></p>
+<p>最后给出源码。</p>
+<h2 id="目标">目标</h2>
+<ol>
+<li>高质量的采样，理想情况下比拟16xSSAA。</li>
+<li>精确的Clamp，不能出现一点残影。</li>
+<li>静态稳定性，大量减少静态场景的Flickering。</li>
+<li>最好的性能，不引入额外的RT。</li>
+<li>锐利的输出。</li>
+</ol>
+<h2 id="实现目标1">实现目标#1</h2>
+<p>对于目标1，16x的SSAA意味着TAA的抖动周期至少为16帧。但通常来说，越大的帧周期，画面稳定性越差，并且对帧率的要求更高。</p>
+<p>因此，直接设Halton序列的周期为16是比较好的选择。</p>
+<h2 id="实现目标2">实现目标#2</h2>
+<p>我测试了很多Clamp方法，目前最优秀的还是AMD的Variance Clamp做法，他们在算方差前就提前做好了Tonemapper, 最后Clamp出来的效果非常的准确。</p>
+<h2 id="实现目标3和4">实现目标#3和#4</h2>
+<p>我大量的时间都花在这里了，所以会更加详细的说明思路。</p>
+<p>静态Flickering是因为Halton序列随机抖动导致远处微小几何体在随机某一帧光栅化，断断续续的，因此很容易被History Clamp剔除掉贡献，然后就会出现静态的Flicking。</p>
+<p>治标做法是给场景做好网格LOD。</p>
+<p>治本做法，标记出这些Flickering的像素，将它们锁住，并增加它们在Clamp时Box的Size，或者根本就不Clamp。</p>
+<p>这种做法其实来自AMD的FSR2.0:</p>
+<p><img src="/images/TAAH/image-20220427230124115.png" alt="image-20220427230124115"></p>
+<p>思路很清晰但做起来付出的代价却很高。</p>
+<p>首先排除LockPixel自己的RT消耗，我们如果要准确标记出Lock Pixel，我们得确保满足如下条件：</p>
+<ol>
+<li>这部分像素在上一帧和这一帧没有移动（速度为0）。</li>
+<li>这部分像素的深度和历史帧深度存在突变。</li>
+<li>这部分像素的亮度和历史帧亮度存在突变。</li>
+</ol>
+<p>条件#1确保静态的像素才会被锁住。由于TAA每帧在一个像素内Jitter，所以判断两帧内是否移动，得采样3x3范围内的速度缓冲做判断，并且还得保持历史帧速度缓冲。</p>
+<p>条件#2和条件#3同样得在3x3范围内做，并且这个突变的范围需要设置得非常的微妙，需要耐心调整。</p>
+<p>我反正是做着做着要吐了。</p>
+<p>我最终的做法：</p>
+<p>其实调整BlendFactor为一个较低的值可以很好的抑制闪烁。但它会带来拖影。</p>
+<p>所以在History.w中存入一个Lerp Factor，根据速度来调整clamp的box size。</p>
+<p>这样，不会引入任何额外的RT。</p>
+<h2 id="实现目标5">实现目标#5</h2>
+<p>AMD的CAS是最好的锐化算法了，用在这里非常合适。</p>
+<p>我这边实现了LDS优化的版本。一起放在代码里。细节详见如下：</p>
+<p>#Pass 0: TAAMain:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-glsl" data-lang="glsl"><span style="display:flex;"><span><span style="color:#75715e">#version 460</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#include &#34;Common.glsl&#34;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// Temporal Anti-Alias</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#define LOCAL_SIZE_XY 16</span>
+</span></span><span style="display:flex;"><span>layout (local_size_x <span style="color:#f92672">=</span> LOCAL_SIZE_XY, local_size_y <span style="color:#f92672">=</span> LOCAL_SIZE_XY, local_size_z <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>) <span style="color:#66d9ef">in</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#define VIEW_DATA_SET 0</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#include &#34;ViewData.glsl&#34;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#define FRAME_DATA_SET 2</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#include &#34;FrameData.glsl&#34;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>layout (set <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>, rgba16f) <span style="color:#66d9ef">uniform</span> image2D outHdrColor;
+</span></span><span style="display:flex;"><span>layout (set <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>) <span style="color:#66d9ef">uniform</span> <span style="color:#66d9ef">sampler2D</span> inDepth;  
+</span></span><span style="display:flex;"><span>layout (set <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">2</span>) <span style="color:#66d9ef">uniform</span> <span style="color:#66d9ef">sampler2D</span> inHistory; 
+</span></span><span style="display:flex;"><span>layout (set <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">3</span>) <span style="color:#66d9ef">uniform</span> <span style="color:#66d9ef">sampler2D</span> inVelocity;
+</span></span><span style="display:flex;"><span>layout (set <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">4</span>) <span style="color:#66d9ef">uniform</span> <span style="color:#66d9ef">sampler2D</span> inHdrColor;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> TAAPushConstant
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    uint firstRender;
+</span></span><span style="display:flex;"><span>    uint camMove;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>layout(push_constant) <span style="color:#66d9ef">uniform</span> block
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	TAAPushConstant pushConstant;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">bool</span> IsFirstFrame()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> pushConstant.firstRender <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">bool</span> IsCamMove()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> pushConstant.camMove <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// TAA random offset within one pixel range.</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// so use 3x3 tap to get safe value.</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">ivec2</span> kPattern3x3[<span style="color:#ae81ff">9</span>] <span style="color:#f92672">=</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span>(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>,<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span>(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">0</span>),
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span>(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>),
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">0</span>,<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">0</span>),
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">1</span>,<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> kRpc9 <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">/</span> <span style="color:#ae81ff">9.0</span>f;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// keep 1 pixel border for lds, to keep edge tap safe.</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">int</span> kBorderSize <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">int</span> kGroupSize  <span style="color:#f92672">=</span> LOCAL_SIZE_XY;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">int</span> kLdsLength  <span style="color:#f92672">=</span> kGroupSize <span style="color:#f92672">+</span> kBorderSize <span style="color:#f92672">*</span> <span style="color:#ae81ff">2</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">int</span> kLdsArea    <span style="color:#f92672">=</span> kLdsLength <span style="color:#f92672">*</span> kLdsLength;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> kTinyFloat   <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>e<span style="color:#f92672">-</span><span style="color:#ae81ff">8</span>f;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> kMaxFloat16  <span style="color:#f92672">=</span> <span style="color:#ae81ff">32767.0</span>f;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> kMaxFloat16u <span style="color:#f92672">=</span> <span style="color:#ae81ff">65535.0</span>f;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>shared <span style="color:#66d9ef">vec3</span>  sharedColor[kLdsLength][kLdsLength];
+</span></span><span style="display:flex;"><span>shared <span style="color:#66d9ef">float</span> sharedDepth[kLdsLength][kLdsLength];
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">vec3</span> reinhard(<span style="color:#66d9ef">vec3</span> hdr)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> hdr <span style="color:#f92672">/</span> (hdr <span style="color:#f92672">+</span> <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">vec3</span> reinhardInverse(<span style="color:#66d9ef">in</span> <span style="color:#66d9ef">vec3</span> sdr)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> sdr <span style="color:#f92672">/</span> max(<span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">-</span> sdr, <span style="color:#ae81ff">1</span>e<span style="color:#f92672">-</span><span style="color:#ae81ff">5</span>f);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">vec3</span> ldsLoadColor(<span style="color:#66d9ef">ivec2</span> GId)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    GId <span style="color:#f92672">+=</span> <span style="color:#66d9ef">ivec2</span>(kBorderSize);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> sharedColor[GId.x][GId.y];
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// store color with reinhard tonemmaper.</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> ldsStoreColor(<span style="color:#66d9ef">ivec2</span> GId, <span style="color:#66d9ef">vec3</span> color)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    sharedColor[GId.x][GId.y] <span style="color:#f92672">=</span> reinhard(color);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> ldsLoadDepth(<span style="color:#66d9ef">ivec2</span> GId)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    GId <span style="color:#f92672">+=</span> <span style="color:#66d9ef">ivec2</span>(kBorderSize);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> sharedDepth[GId.x][GId.y];
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> ldsStoreDepth(<span style="color:#66d9ef">ivec2</span> GId, <span style="color:#66d9ef">float</span> depth)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    sharedDepth[GId.x][GId.y] <span style="color:#f92672">=</span> depth;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> luminance(<span style="color:#66d9ef">vec3</span> color)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> max(dot(color, <span style="color:#66d9ef">vec3</span>(<span style="color:#ae81ff">0.299</span>f, <span style="color:#ae81ff">0.587</span>f, <span style="color:#ae81ff">0.114</span>f)), <span style="color:#ae81ff">1</span>e<span style="color:#f92672">-</span><span style="color:#ae81ff">5</span>f);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> storeColorDepth(<span style="color:#66d9ef">ivec2</span> GId, <span style="color:#66d9ef">ivec2</span> TId, <span style="color:#66d9ef">ivec2</span> size)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    TId <span style="color:#f92672">=</span> clamp(TId, <span style="color:#66d9ef">ivec2</span>(<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">0</span>), size <span style="color:#f92672">-</span> <span style="color:#66d9ef">ivec2</span>(<span style="color:#ae81ff">1</span>,<span style="color:#ae81ff">1</span>));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// store color.</span>
+</span></span><span style="display:flex;"><span>    ldsStoreColor(GId, texelFetch(inHdrColor, TId, <span style="color:#ae81ff">0</span>).rgb);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// store linear z.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> linearZ <span style="color:#f92672">=</span> linearizeDepth(texelFetch(inDepth, TId, <span style="color:#ae81ff">0</span>).r, viewData.camInfo.z, viewData.camInfo.w);
+</span></span><span style="display:flex;"><span>    ldsStoreDepth(GId, linearZ);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> prepareLds(<span style="color:#66d9ef">ivec2</span> topLeft, <span style="color:#66d9ef">ivec2</span> workSize, <span style="color:#66d9ef">int</span> groupIndex)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 4 sample per pixel.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(groupIndex <span style="color:#f92672">&lt;</span> (kLdsArea <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">2</span>)) <span style="color:#75715e">// 1 / 4 area pixel work.</span>
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// sample [0, 0]</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">ivec2</span> id0 <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(
+</span></span><span style="display:flex;"><span>            groupIndex                     <span style="color:#f92672">%</span> kLdsLength,                      
+</span></span><span style="display:flex;"><span>            groupIndex                     <span style="color:#f92672">/</span> kLdsLength);
+</span></span><span style="display:flex;"><span>        storeColorDepth(id0, topLeft <span style="color:#f92672">+</span> id0, workSize);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// sample [0.25,  0.25]</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">ivec2</span> id1 <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> (kLdsArea <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">2</span>))  <span style="color:#f92672">%</span> kLdsLength, 
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> (kLdsArea <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">2</span>))  <span style="color:#f92672">/</span> kLdsLength);
+</span></span><span style="display:flex;"><span>        storeColorDepth(id1, topLeft <span style="color:#f92672">+</span> id1, workSize);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// sample [0.5, 0.5]</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">ivec2</span> id2 <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> (kLdsArea <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">1</span>))  <span style="color:#f92672">%</span> kLdsLength, 
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> (kLdsArea <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">1</span>))  <span style="color:#f92672">/</span> kLdsLength);
+</span></span><span style="display:flex;"><span>        storeColorDepth(id2, topLeft <span style="color:#f92672">+</span> id2, workSize);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// sample [0.75, 0.75]</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">ivec2</span> id3 <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> kLdsArea <span style="color:#f92672">*</span> <span style="color:#ae81ff">3</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">4</span>) <span style="color:#f92672">%</span> kLdsLength, 
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> kLdsArea <span style="color:#f92672">*</span> <span style="color:#ae81ff">3</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">4</span>) <span style="color:#f92672">/</span> kLdsLength);
+</span></span><span style="display:flex;"><span>        storeColorDepth(id3, topLeft <span style="color:#f92672">+</span> id3, workSize);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// linear z cloest test.</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> depthGetClosest(<span style="color:#66d9ef">ivec2</span> pos, <span style="color:#66d9ef">inout</span> <span style="color:#66d9ef">float</span> cloestDepth, <span style="color:#66d9ef">inout</span> <span style="color:#66d9ef">ivec2</span> cloestPos)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> d <span style="color:#f92672">=</span> ldsLoadDepth(pos);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(d <span style="color:#f92672">&lt;</span> cloestDepth)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        cloestDepth <span style="color:#f92672">=</span> d;
+</span></span><span style="display:flex;"><span>        cloestPos <span style="color:#f92672">=</span> pos;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 3x3 tap get closet pos depth.</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> velocitySample3x3Closest(<span style="color:#66d9ef">ivec2</span> groupPos, <span style="color:#66d9ef">ivec2</span> topLeft, <span style="color:#66d9ef">out</span> <span style="color:#66d9ef">vec2</span> velocity)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> minDepth <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span> minPos   <span style="color:#f92672">=</span> groupPos;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    depthGetClosest(groupPos <span style="color:#f92672">+</span> kPattern3x3[<span style="color:#ae81ff">0</span>], minDepth, minPos);
+</span></span><span style="display:flex;"><span>    depthGetClosest(groupPos <span style="color:#f92672">+</span> kPattern3x3[<span style="color:#ae81ff">1</span>], minDepth, minPos);
+</span></span><span style="display:flex;"><span>    depthGetClosest(groupPos <span style="color:#f92672">+</span> kPattern3x3[<span style="color:#ae81ff">2</span>], minDepth, minPos);
+</span></span><span style="display:flex;"><span>    depthGetClosest(groupPos <span style="color:#f92672">+</span> kPattern3x3[<span style="color:#ae81ff">3</span>], minDepth, minPos);
+</span></span><span style="display:flex;"><span>    depthGetClosest(groupPos <span style="color:#f92672">+</span> kPattern3x3[<span style="color:#ae81ff">4</span>], minDepth, minPos);
+</span></span><span style="display:flex;"><span>    depthGetClosest(groupPos <span style="color:#f92672">+</span> kPattern3x3[<span style="color:#ae81ff">5</span>], minDepth, minPos);
+</span></span><span style="display:flex;"><span>    depthGetClosest(groupPos <span style="color:#f92672">+</span> kPattern3x3[<span style="color:#ae81ff">6</span>], minDepth, minPos);
+</span></span><span style="display:flex;"><span>    depthGetClosest(groupPos <span style="color:#f92672">+</span> kPattern3x3[<span style="color:#ae81ff">7</span>], minDepth, minPos);
+</span></span><span style="display:flex;"><span>    depthGetClosest(groupPos <span style="color:#f92672">+</span> kPattern3x3[<span style="color:#ae81ff">8</span>], minDepth, minPos);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    velocity <span style="color:#f92672">=</span> texelFetch(inVelocity, topLeft <span style="color:#f92672">+</span> minPos, <span style="color:#ae81ff">0</span>).xy;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> minDepth;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// catmull Rom 9 tap sampler.</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// sTex: linear clamp sampler2D.</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// uv: sample uv.</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// resolution: working rt resolution.</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">vec3</span> catmullRom9Sample(<span style="color:#66d9ef">sampler2D</span> sTex, <span style="color:#66d9ef">vec2</span> uv, <span style="color:#66d9ef">vec2</span> resolution)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> samplePos <span style="color:#f92672">=</span> uv <span style="color:#f92672">*</span> resolution;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> texPos1   <span style="color:#f92672">=</span> floor(samplePos <span style="color:#f92672">-</span> <span style="color:#ae81ff">0.5</span>f) <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5</span>f;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> f <span style="color:#f92672">=</span> samplePos <span style="color:#f92672">-</span> texPos1;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> w0 <span style="color:#f92672">=</span> f <span style="color:#f92672">*</span> (<span style="color:#f92672">-</span><span style="color:#ae81ff">0.5</span>f <span style="color:#f92672">+</span> f <span style="color:#f92672">*</span> (<span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">-</span> <span style="color:#ae81ff">0.5</span>f <span style="color:#f92672">*</span> f));
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> w1 <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">+</span> f <span style="color:#f92672">*</span> f <span style="color:#f92672">*</span> (<span style="color:#f92672">-</span><span style="color:#ae81ff">2.5</span>f <span style="color:#f92672">+</span> <span style="color:#ae81ff">1.5</span>f <span style="color:#f92672">*</span> f);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> w2 <span style="color:#f92672">=</span> f <span style="color:#f92672">*</span> (<span style="color:#ae81ff">0.5</span>f <span style="color:#f92672">+</span> f <span style="color:#f92672">*</span> (<span style="color:#ae81ff">2.0</span>f <span style="color:#f92672">-</span> <span style="color:#ae81ff">1.5</span>f <span style="color:#f92672">*</span> f));
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> w3 <span style="color:#f92672">=</span> f <span style="color:#f92672">*</span> f <span style="color:#f92672">*</span> (<span style="color:#f92672">-</span><span style="color:#ae81ff">0.5</span>f <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5</span>f <span style="color:#f92672">*</span> f);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> w12 <span style="color:#f92672">=</span> w1 <span style="color:#f92672">+</span> w2;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> offset12 <span style="color:#f92672">=</span> w2 <span style="color:#f92672">/</span> (w1 <span style="color:#f92672">+</span> w2);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> texPos0 <span style="color:#f92672">=</span> texPos1 <span style="color:#f92672">-</span> <span style="color:#ae81ff">1.0</span>f;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> texPos3 <span style="color:#f92672">=</span> texPos1 <span style="color:#f92672">+</span> <span style="color:#ae81ff">2.0</span>f;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> texPos12 <span style="color:#f92672">=</span> texPos1 <span style="color:#f92672">+</span> offset12;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    texPos0  <span style="color:#f92672">/=</span> resolution;
+</span></span><span style="display:flex;"><span>    texPos3  <span style="color:#f92672">/=</span> resolution;
+</span></span><span style="display:flex;"><span>    texPos12 <span style="color:#f92672">/=</span> resolution;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> result <span style="color:#f92672">=</span> <span style="color:#66d9ef">vec3</span>(<span style="color:#ae81ff">0.0</span>f);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> textureLod(sTex, <span style="color:#66d9ef">vec2</span>(texPos0.x,  texPos0.y),  <span style="color:#ae81ff">0</span>).xyz <span style="color:#f92672">*</span> w0.x  <span style="color:#f92672">*</span> w0.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> textureLod(sTex, <span style="color:#66d9ef">vec2</span>(texPos12.x, texPos0.y),  <span style="color:#ae81ff">0</span>).xyz <span style="color:#f92672">*</span> w12.x <span style="color:#f92672">*</span> w0.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> textureLod(sTex, <span style="color:#66d9ef">vec2</span>(texPos3.x,  texPos0.y),  <span style="color:#ae81ff">0</span>).xyz <span style="color:#f92672">*</span> w3.x  <span style="color:#f92672">*</span> w0.y;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> textureLod(sTex, <span style="color:#66d9ef">vec2</span>(texPos0.x,  texPos12.y), <span style="color:#ae81ff">0</span>).xyz <span style="color:#f92672">*</span> w0.x  <span style="color:#f92672">*</span> w12.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> textureLod(sTex, <span style="color:#66d9ef">vec2</span>(texPos12.x, texPos12.y), <span style="color:#ae81ff">0</span>).xyz <span style="color:#f92672">*</span> w12.x <span style="color:#f92672">*</span> w12.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> textureLod(sTex, <span style="color:#66d9ef">vec2</span>(texPos3.x,  texPos12.y), <span style="color:#ae81ff">0</span>).xyz <span style="color:#f92672">*</span> w3.x  <span style="color:#f92672">*</span> w12.y;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> textureLod(sTex, <span style="color:#66d9ef">vec2</span>(texPos0.x,  texPos3.y),  <span style="color:#ae81ff">0</span>).xyz <span style="color:#f92672">*</span> w0.x  <span style="color:#f92672">*</span> w3.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> textureLod(sTex, <span style="color:#66d9ef">vec2</span>(texPos12.x, texPos3.y),  <span style="color:#ae81ff">0</span>).xyz <span style="color:#f92672">*</span> w12.x <span style="color:#f92672">*</span> w3.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> textureLod(sTex, <span style="color:#66d9ef">vec2</span>(texPos3.x,  texPos3.y),  <span style="color:#ae81ff">0</span>).xyz <span style="color:#f92672">*</span> w3.x  <span style="color:#f92672">*</span> w3.y;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> max(result, <span style="color:#66d9ef">vec3</span>(<span style="color:#ae81ff">0.0</span>f));
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> main() 
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span> workSize <span style="color:#f92672">=</span> textureSize(inHdrColor, <span style="color:#ae81ff">0</span>).xy;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span> topLeft  <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(gl_WorkGroupID.xy) <span style="color:#f92672">*</span> kGroupSize <span style="color:#f92672">-</span> kBorderSize;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span> groupPos <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(gl_LocalInvocationID.xy);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> groupIndex <span style="color:#f92672">=</span> <span style="color:#66d9ef">int</span>(gl_LocalInvocationIndex);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    prepareLds(topLeft, workSize, groupIndex);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span> pixelPos <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(gl_GlobalInvocationID.xy);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (pixelPos.x <span style="color:#f92672">&gt;=</span> workSize.x <span style="color:#f92672">||</span> pixelPos.y <span style="color:#f92672">&gt;=</span> workSize.y)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>; 
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> texelSize <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">/</span> <span style="color:#66d9ef">vec2</span>(workSize);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> uv        <span style="color:#f92672">=</span> (<span style="color:#66d9ef">vec2</span>(pixelPos) <span style="color:#f92672">+</span> <span style="color:#66d9ef">vec2</span>(<span style="color:#ae81ff">0.5</span>)) <span style="color:#f92672">*</span> texelSize; 
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// get cloest velocity.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> velocity;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> cloestDepth <span style="color:#f92672">=</span> velocitySample3x3Closest(groupPos, topLeft, velocity);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">bool</span>  bSky <span style="color:#f92672">=</span> cloestDepth <span style="color:#f92672">&lt;=</span> BG_DEPTH;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// reproject uv.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> reprojectedUV <span style="color:#f92672">=</span> uv <span style="color:#f92672">-</span> velocity;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> velocityLerp <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0</span>f;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(<span style="color:#f92672">!</span>IsFirstFrame())
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        velocityLerp <span style="color:#f92672">=</span> texture(inHistory, reprojectedUV).w;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> ideaStaticBoxSize <span style="color:#f92672">=</span> <span style="color:#ae81ff">2.5</span>f;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> staticBoxSize <span style="color:#f92672">=</span> IsCamMove() <span style="color:#f92672">?</span> ideaStaticBoxSize <span style="color:#f92672">:</span> mix(<span style="color:#ae81ff">0.5</span>f, ideaStaticBoxSize, velocityLerp);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> boxSize <span style="color:#f92672">=</span> mix(<span style="color:#ae81ff">0.5</span>f, staticBoxSize, bSky <span style="color:#f92672">?</span> <span style="color:#ae81ff">0.0</span>f <span style="color:#f92672">:</span> smoothstep(<span style="color:#ae81ff">0.02</span>f, <span style="color:#ae81ff">0.0</span>f, length(velocity)));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// in center color.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> colorIn <span style="color:#f92672">=</span> ldsLoadColor(groupPos);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// sample history color.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> colorHistory <span style="color:#f92672">=</span> catmullRom9Sample(inHistory, reprojectedUV, <span style="color:#66d9ef">vec2</span>(workSize));
+</span></span><span style="display:flex;"><span>    colorHistory <span style="color:#f92672">=</span> reinhard(colorHistory);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// variance clamp.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> clampHistory;
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> wsum <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0</span>f;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">vec3</span> vsum  <span style="color:#f92672">=</span> <span style="color:#66d9ef">vec3</span>(<span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">0.0</span>f);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">vec3</span> vsum2 <span style="color:#f92672">=</span> <span style="color:#66d9ef">vec3</span>(<span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">0.0</span>f);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> y <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>; y <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1</span>; <span style="color:#f92672">++</span>y)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> x <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>; x <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1</span>; <span style="color:#f92672">++</span>x)
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec3</span> neigh <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>(x, y));
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> w <span style="color:#f92672">=</span> exp(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.75</span>f <span style="color:#f92672">*</span> (x <span style="color:#f92672">*</span> x <span style="color:#f92672">+</span> y <span style="color:#f92672">*</span> y));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                vsum2 <span style="color:#f92672">+=</span> neigh <span style="color:#f92672">*</span> neigh <span style="color:#f92672">*</span> w;
+</span></span><span style="display:flex;"><span>                vsum  <span style="color:#f92672">+=</span> neigh <span style="color:#f92672">*</span> w;
+</span></span><span style="display:flex;"><span>                wsum  <span style="color:#f92672">+=</span> w;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec3</span> ex  <span style="color:#f92672">=</span> vsum <span style="color:#f92672">/</span> wsum;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec3</span> ex2 <span style="color:#f92672">=</span> vsum2 <span style="color:#f92672">/</span> wsum;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec3</span> dev <span style="color:#f92672">=</span> sqrt(max(ex2 <span style="color:#f92672">-</span> ex <span style="color:#f92672">*</span> ex, <span style="color:#ae81ff">0.0</span>f));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">vec3</span> nmin <span style="color:#f92672">=</span> ex <span style="color:#f92672">-</span> dev <span style="color:#f92672">*</span> boxSize;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">vec3</span> nmax <span style="color:#f92672">=</span> ex <span style="color:#f92672">+</span> dev <span style="color:#f92672">*</span> boxSize;
+</span></span><span style="display:flex;"><span>        clampHistory <span style="color:#f92672">=</span> clamp(colorHistory, nmin, nmax);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// when camera move, use this.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// when camera don&#39;t move, use more bigger blend factor if motion factor check.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> ideaLerpFactor <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.01</span>f;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> blendFactor <span style="color:#f92672">=</span> ideaLerpFactor;
+</span></span><span style="display:flex;"><span>    {   
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> threshold   <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.5</span>f;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> base        <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.5</span>f;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> gather      <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.1666</span>f;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// subpixel flicker reduce</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> depth <span style="color:#f92672">=</span> linearizeDepth(cloestDepth, viewData.camInfo.z, viewData.camInfo.w);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> texelVelMag    <span style="color:#f92672">=</span> length(velocity <span style="color:#f92672">*</span> <span style="color:#66d9ef">vec2</span>(workSize)) <span style="color:#f92672">*</span> depth;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> subpixelMotion <span style="color:#f92672">=</span> clamp(threshold <span style="color:#f92672">/</span> (texelVelMag <span style="color:#f92672">+</span> kTinyFloat), <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// something moveing</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> dynamicBlendFactor <span style="color:#f92672">=</span> texelVelMag <span style="color:#f92672">*</span> base <span style="color:#f92672">+</span> subpixelMotion <span style="color:#f92672">*</span> gather;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// lumiance bias correct.</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> luminanceHistory <span style="color:#f92672">=</span> luminance(clampHistory);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> luminanceCurrent <span style="color:#f92672">=</span> luminance(colorIn);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> unbiasedDifference <span style="color:#f92672">=</span> abs(luminanceCurrent <span style="color:#f92672">-</span> luminanceHistory) <span style="color:#f92672">/</span> ((max(luminanceCurrent, luminanceHistory) <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.3</span>));
+</span></span><span style="display:flex;"><span>        dynamicBlendFactor <span style="color:#f92672">*=</span> <span style="color:#ae81ff">1.0</span> <span style="color:#f92672">-</span> unbiasedDifference;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// clamp</span>
+</span></span><span style="display:flex;"><span>        dynamicBlendFactor <span style="color:#f92672">=</span> clamp(dynamicBlendFactor, <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">0.4</span>f);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> lerpFactor <span style="color:#f92672">=</span> length(velocity <span style="color:#f92672">*</span> <span style="color:#66d9ef">vec2</span>(workSize)) <span style="color:#f92672">*</span> <span style="color:#ae81ff">5.0</span>f;
+</span></span><span style="display:flex;"><span>        lerpFactor  <span style="color:#f92672">=</span> clamp(lerpFactor, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        blendFactor <span style="color:#f92672">=</span> bSky <span style="color:#f92672">?</span> blendFactor <span style="color:#f92672">:</span> mix(blendFactor, dynamicBlendFactor, lerpFactor);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// tiny move, so reset lerp factor.</span>
+</span></span><span style="display:flex;"><span>        velocityLerp <span style="color:#f92672">=</span> lerpFactor <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0.01</span>f <span style="color:#f92672">?</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">:</span> velocityLerp;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// mix lerp factor by frames to get a good clip value.</span>
+</span></span><span style="display:flex;"><span>        velocityLerp <span style="color:#f92672">=</span> mix(velocityLerp, <span style="color:#ae81ff">1.0</span>f, ideaLerpFactor);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> colorResolve <span style="color:#f92672">=</span> mix(clampHistory, colorIn, blendFactor);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// half16 safe clamp.</span>
+</span></span><span style="display:flex;"><span>    colorResolve <span style="color:#f92672">=</span> min(<span style="color:#66d9ef">vec3</span>(<span style="color:#ae81ff">65504.0</span>f), colorResolve);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    imageStore(outHdrColor, <span style="color:#66d9ef">ivec2</span>(gl_GlobalInvocationID.xy), <span style="color:#66d9ef">vec4</span>(colorResolve, velocityLerp));
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Pass#1 TAASharpen:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-glsl" data-lang="glsl"><span style="display:flex;"><span><span style="color:#75715e">#version 460</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#define LOCAL_SIZE_XY 16</span>
+</span></span><span style="display:flex;"><span>layout (local_size_x <span style="color:#f92672">=</span> LOCAL_SIZE_XY, local_size_y <span style="color:#f92672">=</span> LOCAL_SIZE_XY, local_size_z <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>) <span style="color:#66d9ef">in</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// out</span>
+</span></span><span style="display:flex;"><span>layout (set <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>,rgba16f) <span style="color:#66d9ef">uniform</span> image2D hdrImage;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// in</span>
+</span></span><span style="display:flex;"><span>layout (set <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>,rgba16f) <span style="color:#66d9ef">uniform</span> image2D historyImage;
+</span></span><span style="display:flex;"><span>layout (set <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">2</span>,rgba16f) <span style="color:#66d9ef">uniform</span> image2D inTAAImage;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> TAASharpenPushConstant
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    uint  sharpenMethod;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> sharpness;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>layout(push_constant) <span style="color:#66d9ef">uniform</span> block
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	TAASharpenPushConstant pushConstant;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// same with cpp.</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#define SHARPEN_OFF        0</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// Bloom flicking.</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#define SHARPEN_RESPONSIVE 1</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// Bloom stable.</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#define SHARPEN_CAS        2</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">int</span> kBorderSize <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">int</span> kGroupSize  <span style="color:#f92672">=</span> LOCAL_SIZE_XY;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">int</span> kLdsLength  <span style="color:#f92672">=</span> kGroupSize <span style="color:#f92672">+</span> kBorderSize <span style="color:#f92672">*</span> <span style="color:#ae81ff">2</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">int</span> kLdsArea    <span style="color:#f92672">=</span> kLdsLength <span style="color:#f92672">*</span> kLdsLength;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>shared <span style="color:#66d9ef">vec4</span> sharedColor[kLdsLength][kLdsLength];
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">vec4</span> ldsLoadColor(<span style="color:#66d9ef">ivec2</span> GId)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    GId <span style="color:#f92672">+=</span> <span style="color:#66d9ef">ivec2</span>(kBorderSize);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> sharedColor[GId.x][GId.y];
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> ldsStoreColor(<span style="color:#66d9ef">ivec2</span> GId, <span style="color:#66d9ef">vec4</span> color)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    sharedColor[GId.x][GId.y] <span style="color:#f92672">=</span> color;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> storeColor(<span style="color:#66d9ef">ivec2</span> GId, <span style="color:#66d9ef">ivec2</span> TId, <span style="color:#66d9ef">ivec2</span> size)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    TId <span style="color:#f92672">=</span> clamp(TId, <span style="color:#66d9ef">ivec2</span>(<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">0</span>), size <span style="color:#f92672">-</span> <span style="color:#66d9ef">ivec2</span>(<span style="color:#ae81ff">1</span>,<span style="color:#ae81ff">1</span>));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// store color.</span>
+</span></span><span style="display:flex;"><span>    ldsStoreColor(GId, imageLoad(inTAAImage, TId));
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> prepareLds(<span style="color:#66d9ef">ivec2</span> topLeft, <span style="color:#66d9ef">ivec2</span> workSize, <span style="color:#66d9ef">int</span> groupIndex)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 4 sample per pixel.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(groupIndex <span style="color:#f92672">&lt;</span> (kLdsArea <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">2</span>)) <span style="color:#75715e">// 1 / 4 area pixel work.</span>
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// sample [0, 0]</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">ivec2</span> id0 <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(
+</span></span><span style="display:flex;"><span>            groupIndex                     <span style="color:#f92672">%</span> kLdsLength,                      
+</span></span><span style="display:flex;"><span>            groupIndex                     <span style="color:#f92672">/</span> kLdsLength);
+</span></span><span style="display:flex;"><span>        storeColor(id0, topLeft <span style="color:#f92672">+</span> id0, workSize);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// sample [0.25,  0.25]</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">ivec2</span> id1 <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> (kLdsArea <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">2</span>))  <span style="color:#f92672">%</span> kLdsLength, 
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> (kLdsArea <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">2</span>))  <span style="color:#f92672">/</span> kLdsLength);
+</span></span><span style="display:flex;"><span>        storeColor(id1, topLeft <span style="color:#f92672">+</span> id1, workSize);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// sample [0.5, 0.5]</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">ivec2</span> id2 <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> (kLdsArea <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">1</span>))  <span style="color:#f92672">%</span> kLdsLength, 
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> (kLdsArea <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">1</span>))  <span style="color:#f92672">/</span> kLdsLength);
+</span></span><span style="display:flex;"><span>        storeColor(id2, topLeft <span style="color:#f92672">+</span> id2, workSize);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// sample [0.75, 0.75]</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">ivec2</span> id3 <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> kLdsArea <span style="color:#f92672">*</span> <span style="color:#ae81ff">3</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">4</span>) <span style="color:#f92672">%</span> kLdsLength, 
+</span></span><span style="display:flex;"><span>            (groupIndex <span style="color:#f92672">+</span> kLdsArea <span style="color:#f92672">*</span> <span style="color:#ae81ff">3</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">4</span>) <span style="color:#f92672">/</span> kLdsLength);
+</span></span><span style="display:flex;"><span>        storeColor(id3, topLeft <span style="color:#f92672">+</span> id3, workSize);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> min3x(<span style="color:#66d9ef">float</span> a, <span style="color:#66d9ef">float</span> b, <span style="color:#66d9ef">float</span> c)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> min(min(a, b), c);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> max3x(<span style="color:#66d9ef">float</span> a, <span style="color:#66d9ef">float</span> b, <span style="color:#66d9ef">float</span> c)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> max(max(a, b), c);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">vec3</span> reinhardInverse(<span style="color:#66d9ef">in</span> <span style="color:#66d9ef">vec3</span> sdr)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> sdr <span style="color:#f92672">/</span> max(<span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">-</span> sdr, <span style="color:#ae81ff">1</span>e<span style="color:#f92672">-</span><span style="color:#ae81ff">5</span>f);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">vec3</span> RGBToYCoCg(<span style="color:#66d9ef">in</span> <span style="color:#66d9ef">vec3</span> rgb)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> <span style="color:#66d9ef">vec3</span>(
+</span></span><span style="display:flex;"><span>        <span style="color:#ae81ff">0.25</span>f <span style="color:#f92672">*</span> rgb.r <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5</span>f <span style="color:#f92672">*</span> rgb.g <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.25</span>f <span style="color:#f92672">*</span> rgb.b,
+</span></span><span style="display:flex;"><span>        <span style="color:#ae81ff">0.5</span>f <span style="color:#f92672">*</span> rgb.r <span style="color:#f92672">-</span> <span style="color:#ae81ff">0.5</span>f <span style="color:#f92672">*</span> rgb.b,
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">-</span><span style="color:#ae81ff">0.25</span>f <span style="color:#f92672">*</span> rgb.r <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5</span>f <span style="color:#f92672">*</span> rgb.g <span style="color:#f92672">-</span> <span style="color:#ae81ff">0.25</span>f <span style="color:#f92672">*</span> rgb.b
+</span></span><span style="display:flex;"><span>    );
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">vec3</span> YCoCgToRGB(<span style="color:#66d9ef">in</span> <span style="color:#66d9ef">vec3</span> yCoCg)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> <span style="color:#66d9ef">vec3</span>(
+</span></span><span style="display:flex;"><span>        yCoCg.x <span style="color:#f92672">+</span> yCoCg.y <span style="color:#f92672">-</span> yCoCg.z,
+</span></span><span style="display:flex;"><span>        yCoCg.x <span style="color:#f92672">+</span> yCoCg.z,
+</span></span><span style="display:flex;"><span>        yCoCg.x <span style="color:#f92672">-</span> yCoCg.y <span style="color:#f92672">-</span> yCoCg.z
+</span></span><span style="display:flex;"><span>    );
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">vec3</span> ApplySharpening(<span style="color:#66d9ef">ivec2</span> groupPos)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec3</span> top    <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">0</span>,  <span style="color:#ae81ff">1</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec3</span> left   <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">1</span>,  <span style="color:#ae81ff">0</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec3</span> center <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">0</span>,  <span style="color:#ae81ff">0</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec3</span> right  <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>,  <span style="color:#ae81ff">0</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec3</span> bottom <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">0</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>)).xyz;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> result <span style="color:#f92672">=</span> RGBToYCoCg(center);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> unsharpenMask <span style="color:#f92672">=</span> <span style="color:#ae81ff">4.0</span>f <span style="color:#f92672">*</span> result.x;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    unsharpenMask <span style="color:#f92672">-=</span> RGBToYCoCg(top).x;
+</span></span><span style="display:flex;"><span>    unsharpenMask <span style="color:#f92672">-=</span> RGBToYCoCg(bottom).x;
+</span></span><span style="display:flex;"><span>    unsharpenMask <span style="color:#f92672">-=</span> RGBToYCoCg(left).x;
+</span></span><span style="display:flex;"><span>    unsharpenMask <span style="color:#f92672">-=</span> RGBToYCoCg(right).x;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    result.x <span style="color:#f92672">=</span> min(result.x <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.25</span>f <span style="color:#f92672">*</span> unsharpenMask, <span style="color:#ae81ff">1.1</span>f <span style="color:#f92672">*</span> result.x);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> YCoCgToRGB(result);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// AMD CAS Filter for sharpen.</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">vec3</span> AMDCASFilter(<span style="color:#66d9ef">float</span> sharpness, <span style="color:#66d9ef">ivec2</span> groupPos)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span> pixelPos <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(gl_GlobalInvocationID.xy);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// a b c</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// d e f</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// g h i</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> a <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> b <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">0</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> c <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">1</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> d <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>,  <span style="color:#ae81ff">0</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> e <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">0</span>,  <span style="color:#ae81ff">0</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> f <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">1</span>,  <span style="color:#ae81ff">0</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> g <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>,  <span style="color:#ae81ff">1</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> h <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">0</span>,  <span style="color:#ae81ff">1</span>)).xyz;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> i <span style="color:#f92672">=</span> ldsLoadColor(groupPos <span style="color:#f92672">+</span> <span style="color:#66d9ef">ivec2</span>( <span style="color:#ae81ff">1</span>,  <span style="color:#ae81ff">1</span>)).xyz;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mnR <span style="color:#f92672">=</span> min3x(min3x(d.r,e.r,f.r),b.r,h.r);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mnG <span style="color:#f92672">=</span> min3x(min3x(d.g,e.g,f.g),b.g,h.g);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mnB <span style="color:#f92672">=</span> min3x(min3x(d.b,e.b,f.b),b.b,h.b);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mnR2 <span style="color:#f92672">=</span> min3x(min3x(mnR,a.r,c.r),g.r,i.r);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mnG2 <span style="color:#f92672">=</span> min3x(min3x(mnG,a.g,c.g),g.g,i.g);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mnB2 <span style="color:#f92672">=</span> min3x(min3x(mnB,a.b,c.b),g.b,i.b);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    mnR <span style="color:#f92672">=</span> mnR <span style="color:#f92672">+</span> mnR2;
+</span></span><span style="display:flex;"><span>    mnG <span style="color:#f92672">=</span> mnG <span style="color:#f92672">+</span> mnG2;
+</span></span><span style="display:flex;"><span>    mnB <span style="color:#f92672">=</span> mnB <span style="color:#f92672">+</span> mnB2;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mxR <span style="color:#f92672">=</span> max3x(max3x(d.r,e.r,f.r),b.r,h.r);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mxG <span style="color:#f92672">=</span> max3x(max3x(d.g,e.g,f.g),b.g,h.g);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mxB <span style="color:#f92672">=</span> max3x(max3x(d.b,e.b,f.b),b.b,h.b);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mxR2 <span style="color:#f92672">=</span> max3x(max3x(mxR,a.r,c.r),g.r,i.r);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mxG2 <span style="color:#f92672">=</span> max3x(max3x(mxG,a.g,c.g),g.g,i.g);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> mxB2 <span style="color:#f92672">=</span> max3x(max3x(mxB,a.b,c.b),g.b,i.b);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    mxR <span style="color:#f92672">=</span> mxR <span style="color:#f92672">+</span> mxR2;
+</span></span><span style="display:flex;"><span>    mxG <span style="color:#f92672">=</span> mxG <span style="color:#f92672">+</span> mxG2;
+</span></span><span style="display:flex;"><span>    mxB <span style="color:#f92672">=</span> mxB <span style="color:#f92672">+</span> mxB2;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> rcpMR <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">/</span> mxR;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> rcpMG <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">/</span> mxG;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> rcpMB <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">/</span> mxB;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> ampR <span style="color:#f92672">=</span> clamp(min(mnR, <span style="color:#ae81ff">2.0</span>f <span style="color:#f92672">-</span> mxR) <span style="color:#f92672">*</span> rcpMR, <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> ampG <span style="color:#f92672">=</span> clamp(min(mnG, <span style="color:#ae81ff">2.0</span>f <span style="color:#f92672">-</span> mxG) <span style="color:#f92672">*</span> rcpMG, <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> ampB <span style="color:#f92672">=</span> clamp(min(mnB, <span style="color:#ae81ff">2.0</span>f <span style="color:#f92672">-</span> mxB) <span style="color:#f92672">*</span> rcpMB, <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Shaping amount of sharpening.</span>
+</span></span><span style="display:flex;"><span>    ampR <span style="color:#f92672">=</span> sqrt(ampR);
+</span></span><span style="display:flex;"><span>    ampG <span style="color:#f92672">=</span> sqrt(ampG);
+</span></span><span style="display:flex;"><span>    ampB <span style="color:#f92672">=</span> sqrt(ampB);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Filter shape.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">//  0 w 0</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">//  w 1 w</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">//  0 w 0</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> peak <span style="color:#f92672">=</span> <span style="color:#f92672">-</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">/</span> mix(<span style="color:#ae81ff">8.0</span>f, <span style="color:#ae81ff">5.0</span>f, clamp(sharpness, <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">1.0</span>f));
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> wR <span style="color:#f92672">=</span> ampR <span style="color:#f92672">*</span> peak;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> wG <span style="color:#f92672">=</span> ampG <span style="color:#f92672">*</span> peak;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> wB <span style="color:#f92672">=</span> ampB <span style="color:#f92672">*</span> peak;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> rcpWeightR <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">/</span> (<span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">+</span> <span style="color:#ae81ff">4.0</span>f <span style="color:#f92672">*</span> wR);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> rcpWeightG <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">/</span> (<span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">+</span> <span style="color:#ae81ff">4.0</span>f <span style="color:#f92672">*</span> wG);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> rcpWeightB <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">/</span> (<span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">+</span> <span style="color:#ae81ff">4.0</span>f <span style="color:#f92672">*</span> wB);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> outColor;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    outColor.r <span style="color:#f92672">=</span> clamp((b.r <span style="color:#f92672">*</span> wR <span style="color:#f92672">+</span> d.r <span style="color:#f92672">*</span> wR <span style="color:#f92672">+</span> f.r <span style="color:#f92672">*</span> wR <span style="color:#f92672">+</span> h.r <span style="color:#f92672">*</span> wR <span style="color:#f92672">+</span> e.r) <span style="color:#f92672">*</span> rcpWeightR, <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>    outColor.g <span style="color:#f92672">=</span> clamp((b.g <span style="color:#f92672">*</span> wG <span style="color:#f92672">+</span> d.g <span style="color:#f92672">*</span> wG <span style="color:#f92672">+</span> f.g <span style="color:#f92672">*</span> wG <span style="color:#f92672">+</span> h.g <span style="color:#f92672">*</span> wG <span style="color:#f92672">+</span> e.g) <span style="color:#f92672">*</span> rcpWeightG, <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>    outColor.b <span style="color:#f92672">=</span> clamp((b.b <span style="color:#f92672">*</span> wB <span style="color:#f92672">+</span> d.b <span style="color:#f92672">*</span> wB <span style="color:#f92672">+</span> f.b <span style="color:#f92672">*</span> wB <span style="color:#f92672">+</span> h.b <span style="color:#f92672">*</span> wB <span style="color:#f92672">+</span> e.b) <span style="color:#f92672">*</span> rcpWeightB, <span style="color:#ae81ff">0.0</span>f, <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> outColor;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> main()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span> workSize <span style="color:#f92672">=</span> imageSize(inTAAImage);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span> topLeft  <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(gl_WorkGroupID.xy) <span style="color:#f92672">*</span> kGroupSize <span style="color:#f92672">-</span> kBorderSize;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">ivec2</span> groupPos <span style="color:#f92672">=</span> <span style="color:#66d9ef">ivec2</span>(gl_LocalInvocationID.xy);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> groupIndex <span style="color:#f92672">=</span> <span style="color:#66d9ef">int</span>(gl_LocalInvocationIndex);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    prepareLds(topLeft, workSize, groupIndex);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (gl_GlobalInvocationID.x <span style="color:#f92672">&gt;=</span> workSize.x <span style="color:#f92672">||</span> gl_GlobalInvocationID.y <span style="color:#f92672">&gt;=</span> workSize.y)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>; 
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// load center color, mask valid on w channel.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec4</span> colorIn <span style="color:#f92672">=</span> ldsLoadColor(groupPos);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// cache center color.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec3</span> center <span style="color:#f92672">=</span> colorIn.xyz;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// history color is after reinhard tonemapper. so here reverse.</span>
+</span></span><span style="display:flex;"><span>    colorIn.xyz <span style="color:#f92672">=</span> reinhardInverse(colorIn.xyz);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// update history image.</span>
+</span></span><span style="display:flex;"><span>    imageStore(historyImage, <span style="color:#66d9ef">ivec2</span>(gl_GlobalInvocationID.xy), colorIn);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// out color.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span> color <span style="color:#f92672">=</span> center;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> sharpness <span style="color:#f92672">=</span> pushConstant.sharpness;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(pushConstant.sharpenMethod <span style="color:#f92672">==</span> SHARPEN_RESPONSIVE)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        color <span style="color:#f92672">=</span> ApplySharpening(groupPos);
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">else</span> <span style="color:#66d9ef">if</span>(pushConstant.sharpenMethod <span style="color:#f92672">==</span> SHARPEN_CAS)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        color <span style="color:#f92672">=</span> AMDCASFilter(sharpness, groupPos);
+</span></span><span style="display:flex;"><span>    } 
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// out hdr color, also tonemapper reverse.</span>
+</span></span><span style="display:flex;"><span>    imageStore(hdrImage, <span style="color:#66d9ef">ivec2</span>(gl_GlobalInvocationID.xy), <span style="color:#66d9ef">vec4</span>(reinhardInverse(color), <span style="color:#ae81ff">1.0</span>f));
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div>
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/sssr/">快速收敛的Stochastic Screen Space Reflections</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/">关于Vulkan渲染画面数据杂乱但Renderdoc下正常问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/">Vulkan异步队列与异步纹理上传</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mipmap%E9%A2%A4%E5%8A%A8%E7%9A%84alphaclip%E8%A7%A3%E5%86%B3%E8%BE%B9%E7%BC%98%E6%9D%82%E8%89%B2%E9%97%AE%E9%A2%98/">Mipmap颤动的AlphaClip解决边缘杂色问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/">VkWriteDescriptorSet内存堆释放问题</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

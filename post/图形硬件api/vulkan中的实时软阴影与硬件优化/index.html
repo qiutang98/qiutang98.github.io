@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> Vulkan中的实时软阴影与硬件优化 | 月光下的旅行。 </title>
+  <meta name="description" content="Vulkan中的实时软阴影与硬件优化">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >Vulkan中的实时软阴影与硬件优化</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-04-29T00:00:00Z">April 29, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+      <a href="/categories/flower">Flower</a>
+      &nbsp;
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p><img src="/images/Vulkan%E4%B8%AD%E9%92%88%E5%AF%B9ShadowMap%E6%8F%90%E4%BE%9B%E7%9A%84%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96.assets/image-20210505153050810.png" alt="Image"></p>
+<p>ShadowMap算法需要解决<strong>阴影失真（Shadow Acne）<strong>和</strong>阴影抗锯齿</strong>问题，前者可以通过 shadow bias 解决，后者可以使用自定义滤波器如pcf、vsm、esm、evsm等解决，而 shadow bias和pcf滤波，vulkan都提供了对应的硬件能力来加速计算。</p>
+<p>对于shadow bias，如果不使用硬件方法，而在shader中计算偏移量的话，常用的计算方法（learnopengl给出来的）是：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> bias <span style="color:#f92672">=</span> max(<span style="color:#ae81ff">0.05f</span> <span style="color:#f92672">*</span> (<span style="color:#ae81ff">1.0</span> <span style="color:#f92672">-</span> dot(normal, lightDir)), <span style="color:#ae81ff">0.005f</span>);
+</span></span></code></pre></div><p>当然，渲染时把Cull Mode改为Cull Front，可以进一步弥补深度的比较精度。</p>
+<p>Vulkan光栅化器内置了一个Pipeline State：depthBiasState，开启后会将光栅化得到的深度值偏移一段距离。</p>
+<p>可以配置的参数有depthBiasSlopeFactor、depthBiasConstantFactor以及depthBiasClamp,偏移的计算公式如下：</p>
+<p><img src="/images/Vulkan%E4%B8%AD%E9%92%88%E5%AF%B9ShadowMap%E6%8F%90%E4%BE%9B%E7%9A%84%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96.assets/image-20210505135434018.png" alt="Image"></p>
+<p>更详细的介绍见<a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdSetDepthBias.html">spec</a>.</p>
+<ol>
+<li>depthBiasSlopeFactor：根据几何体表面梯度大小来缩放的因子。</li>
+<li>depthBiasConstantFactor： 恒定偏移量。</li>
+<li>depthBiasClamp：偏移量钳制值。</li>
+</ol>
+<p>开启步骤：</p>
+<ol>
+<li>填写VkPipelineRasterizationStateCreateInfo时把depthBiasEnable设为VK_TRUE。</li>
+<li>（可选）填写VkPipelineRasterizationStateCreateInfo时把cullMode设为VK_CULL_MODE_FRONT_BIT。</li>
+<li>（可选）填写VkPipelineDynamicStateCreateInfo时把VK_DYNAMIC_STATE_DEPTH_BIAS也加进去。</li>
+<li>如果选用了第三步，则在VkCommandBuffer录制时使用vkCmdSetDepthBias设置动态的深度偏移值，否则直接在创建Pipeline时把这个值填好。</li>
+</ol>
+<p>整体的代码流程如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#75715e">// 1. ShadowMap深度偏移开启
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>pipe_info.rasterization_state.depthBiasEnable <span style="color:#f92672">=</span> VK_TRUE;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 2. ShadowMap Cull Front
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>pipe_info.rasterization_state.cullMode <span style="color:#f92672">=</span> VK_CULL_MODE_FRONT_BIT;
+</span></span><span style="display:flex;"><span>pipe_info.depth_stencil_state.depthCompareOp <span style="color:#f92672">=</span> VK_COMPARE_OP_LESS_OR_EQUAL;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 3. 添加VK_DYNAMIC_STATE_DEPTH_BIAS动态阶段
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>VkDynamicState<span style="color:#f92672">&gt;</span> dynamicStateEnables <span style="color:#f92672">=</span> {
+</span></span><span style="display:flex;"><span>	VK_DYNAMIC_STATE_VIEWPORT,
+</span></span><span style="display:flex;"><span>	VK_DYNAMIC_STATE_SCISSOR,
+</span></span><span style="display:flex;"><span>	VK_DYNAMIC_STATE_DEPTH_BIAS
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 4. 绘制记录阶段
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>pass_shadowdepth<span style="color:#f92672">-&gt;</span>cmd_buf<span style="color:#f92672">-&gt;</span>begin(VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT);
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    vkCmdSetViewport(<span style="color:#f92672">*</span>pass_shadowdepth<span style="color:#f92672">-&gt;</span>cmd_buf, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">1</span>, <span style="color:#f92672">&amp;</span>viewport);
+</span></span><span style="display:flex;"><span>	vkCmdSetScissor(<span style="color:#f92672">*</span>pass_shadowdepth<span style="color:#f92672">-&gt;</span>cmd_buf, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">1</span>, <span style="color:#f92672">&amp;</span>scissor);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> depthBiasConstant <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.25f</span>;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">static</span> <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> depthBiasSlope <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.75f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	vkCmdSetDepthBias(
+</span></span><span style="display:flex;"><span>		<span style="color:#f92672">*</span>pass_shadowdepth<span style="color:#f92672">-&gt;</span>cmd_buf,
+</span></span><span style="display:flex;"><span>		depthBiasConstant,
+</span></span><span style="display:flex;"><span>		<span style="color:#ae81ff">0.0f</span>,
+</span></span><span style="display:flex;"><span>		depthBiasSlope
+</span></span><span style="display:flex;"><span>	);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    draw();
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>pass_shadowdepth<span style="color:#f92672">-&gt;</span>cmd_buf<span style="color:#f92672">-&gt;</span>end();
+</span></span></code></pre></div><p>这样，便无需再在着色器中计算一次偏移了。</p>
+<p><img src="/images/Vulkan%E4%B8%AD%E9%92%88%E5%AF%B9ShadowMap%E6%8F%90%E4%BE%9B%E7%9A%84%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96.assets/image-20210505141147970.png" alt="Image"></p>
+<p>接下来是硬件PCF，更准确的来说是双线性的深度比较纹理滤波。</p>
+<p>开启步骤如下：</p>
+<ol>
+<li>shadowdepth纹理的采样方式设为Bilinear。</li>
+<li>compareEnable设为True。</li>
+<li>compare_op设为VK_COMPARE_OP_LESS。</li>
+<li>shader中采样器设为sampler2DShadow。</li>
+<li>采样时把ShadowCoord的xyz都传入。</li>
+</ol>
+<p>代码流程如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#75715e">// 1. cpp
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>VkSamplerCreateInfo sampler_info{};
+</span></span><span style="display:flex;"><span>sampler_info.sType                   <span style="color:#f92672">=</span> VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+</span></span><span style="display:flex;"><span>sampler_info.magFilter               <span style="color:#f92672">=</span> VK_FILTER_LINEAR;
+</span></span><span style="display:flex;"><span>sampler_info.minFilter               <span style="color:#f92672">=</span> VK_FILTER_LINEAR;
+</span></span><span style="display:flex;"><span>sampler_info.compareOp               <span style="color:#f92672">=</span> VK_COMPARE_OP_LESS;
+</span></span><span style="display:flex;"><span>sampler_info.compareEnable           <span style="color:#f92672">=</span> VK_TRUE;
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 边界情况优化
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>sampler_info.address_mode_U <span style="color:#f92672">=</span> VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER; 
+</span></span><span style="display:flex;"><span>sampler_info.address_mode_V <span style="color:#f92672">=</span> VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER; 
+</span></span><span style="display:flex;"><span>sampler_info.address_mode_W <span style="color:#f92672">=</span> VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+</span></span><span style="display:flex;"><span>sampler_info.bordercolor <span style="color:#f92672">=</span> VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 2. shader...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// layout (binding = 5) uniform sampler2D directional_light_shadowdepth;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>layout (binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">5</span>) uniform sampler2DShadow directional_light_shadowdepth;
+</span></span><span style="display:flex;"><span>vec3 <span style="color:#a6e22e">hardware_shadow_pcf</span>(sampler2DShadow shadow_tex,<span style="color:#66d9ef">float</span> NoL,vec3 fragworldpos,vec2 screen_uv)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	vec3 shadowMaskColor <span style="color:#f92672">=</span> vec3(<span style="color:#ae81ff">0.0</span>, <span style="color:#ae81ff">0.0</span>, <span style="color:#ae81ff">0.0</span>);
+</span></span><span style="display:flex;"><span>	vec4 shadow_clip_pos <span style="color:#f92672">=</span> ub_directional_light_vp.proj <span style="color:#f92672">*</span> ub_directional_light_vp.view <span style="color:#f92672">*</span> vec4(fragworldpos, <span style="color:#ae81ff">1.0</span>);
+</span></span><span style="display:flex;"><span>	vec4 shadow_coord <span style="color:#f92672">=</span> shadow_clip_pos <span style="color:#f92672">/</span> shadow_clip_pos.w;
+</span></span><span style="display:flex;"><span>	shadow_coord.st <span style="color:#f92672">=</span> shadow_coord.st <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.5f</span> <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> shadowMapCmp <span style="color:#f92672">=</span> texture(shadow_tex, shadow_coord.xyz);
+</span></span><span style="display:flex;"><span>	shadowMaskColor <span style="color:#f92672">+=</span> vec3(shadowMapCmp);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> shadowMaskColor;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>得出的结果和双线性纹理滤波差不多，因为它只是4个滤波核：</p>
+<p><img src="/images/Vulkan%E4%B8%AD%E9%92%88%E5%AF%B9ShadowMap%E6%8F%90%E4%BE%9B%E7%9A%84%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96.assets/image-20210505142745029.png" alt="Image"></p>
+<p>可以配合泊松盘采样多次，得到一个还不错的软阴影：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">const</span> vec2 poisson_disk_25[<span style="color:#ae81ff">25</span>] <span style="color:#f92672">=</span> vec2[](
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.978698</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.0884121</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.841121</span>, <span style="color:#ae81ff">0.521165</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.71746</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.50322</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.702933</span>, <span style="color:#ae81ff">0.903134</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.663198</span>, <span style="color:#ae81ff">0.15482</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.495102</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.232887</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.364238</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.961791</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.345866</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.564379</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.325663</span>, <span style="color:#ae81ff">0.64037</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.182714</span>, <span style="color:#ae81ff">0.321329</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.142613</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.0227363</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.0564287</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.36729</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#f92672">-</span><span style="color:#ae81ff">0.0185858</span>, <span style="color:#ae81ff">0.918882</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.0381787</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.728996</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.16599</span>, <span style="color:#ae81ff">0.093112</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.253639</span>, <span style="color:#ae81ff">0.719535</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.369549</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.655019</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.423627</span>, <span style="color:#ae81ff">0.429975</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.530747</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.364971</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.566027</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.940489</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.639332</span>, <span style="color:#ae81ff">0.0284127</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.652089</span>, <span style="color:#ae81ff">0.669668</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.773797</span>, <span style="color:#ae81ff">0.345012</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.968871</span>, <span style="color:#ae81ff">0.840449</span>),
+</span></span><span style="display:flex;"><span>    vec2(<span style="color:#ae81ff">0.991882</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.657338</span>)
+</span></span><span style="display:flex;"><span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>vec3 <span style="color:#a6e22e">hardware_shadow_pcf</span>(sampler2DShadow shadow_tex,<span style="color:#66d9ef">float</span> NoL,vec3 fragworldpos,vec2 screen_uv,<span style="color:#66d9ef">float</span> dilation)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	vec3 shadowMaskColor <span style="color:#f92672">=</span> vec3(<span style="color:#ae81ff">0.0</span>, <span style="color:#ae81ff">0.0</span>, <span style="color:#ae81ff">0.0</span>);
+</span></span><span style="display:flex;"><span>	ivec2 tex_dim <span style="color:#f92672">=</span> textureSize(shadow_tex, <span style="color:#ae81ff">0</span>).xy;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> dx <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span> <span style="color:#f92672">/</span> <span style="color:#66d9ef">float</span>(tex_dim.x);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> dy <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span> <span style="color:#f92672">/</span> <span style="color:#66d9ef">float</span>(tex_dim.y);
+</span></span><span style="display:flex;"><span>	vec2 texel_size <span style="color:#f92672">=</span> vec2(dx, dy);
+</span></span><span style="display:flex;"><span>	vec4 shadow_clip_pos <span style="color:#f92672">=</span> ub_directional_light_vp.proj <span style="color:#f92672">*</span> ub_directional_light_vp.view <span style="color:#f92672">*</span> vec4(fragworldpos, <span style="color:#ae81ff">1.0</span>);
+</span></span><span style="display:flex;"><span>	vec4 shadow_coord <span style="color:#f92672">=</span> shadow_clip_pos <span style="color:#f92672">/</span> shadow_clip_pos.w;
+</span></span><span style="display:flex;"><span>	shadow_coord.st <span style="color:#f92672">=</span> shadow_coord.st <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.5f</span> <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> x <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; x <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">25</span>; x<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		vec2 offset_uv <span style="color:#f92672">=</span> texel_size <span style="color:#f92672">*</span> poisson_disk_25[x]  <span style="color:#f92672">*</span> dilation;
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">float</span> shadowMapCmp <span style="color:#f92672">=</span> texture(shadow_tex, vec3(shadow_coord.xy <span style="color:#f92672">+</span> offset_uv,shadow_coord.z));
+</span></span><span style="display:flex;"><span>		shadowMaskColor <span style="color:#f92672">+=</span> vec3(shadowMapCmp);
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	shadowMaskColor <span style="color:#f92672">/=</span> <span style="color:#ae81ff">25.0f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> shadowMaskColor;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>下图是25次采样的pcf软阴影，其中dilation = 1.0f：</p>
+<p><img src="/images/Vulkan%E4%B8%AD%E9%92%88%E5%AF%B9ShadowMap%E6%8F%90%E4%BE%9B%E7%9A%84%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96.assets/image-20210505144722740.png" alt="Image"></p>
+<p>微软则设计了一种类似双线性过滤可缩放滤波核的算法，9次采样就能得到很不错的效果, 效果如下：</p>
+<p><img src="/images/Vulkan%E4%B8%AD%E9%92%88%E5%AF%B9ShadowMap%E6%8F%90%E4%BE%9B%E7%9A%84%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96.assets/image-20210505150439606.png" alt="Image"></p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>vec3 <span style="color:#a6e22e">hardware_shadow_pcf_microsoft</span>(sampler2DShadow shadow_tex,<span style="color:#66d9ef">float</span> NoL,vec3 fragworldpos,vec2 screen_uv)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	ivec2 tex_dim <span style="color:#f92672">=</span> textureSize(shadow_tex, <span style="color:#ae81ff">0</span>).xy;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> dx <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span> <span style="color:#f92672">/</span> <span style="color:#66d9ef">float</span>(tex_dim.x);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> dy <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span> <span style="color:#f92672">/</span> <span style="color:#66d9ef">float</span>(tex_dim.y);
+</span></span><span style="display:flex;"><span>	vec2 texel_size <span style="color:#f92672">=</span> vec2(dx, dy);
+</span></span><span style="display:flex;"><span>	vec4 shadow_clip_pos <span style="color:#f92672">=</span> ub_directional_light_vp.proj <span style="color:#f92672">*</span> ub_directional_light_vp.view <span style="color:#f92672">*</span> vec4(fragworldpos, <span style="color:#ae81ff">1.0</span>);
+</span></span><span style="display:flex;"><span>	vec4 shadow_coord <span style="color:#f92672">=</span> shadow_clip_pos <span style="color:#f92672">/</span> shadow_clip_pos.w;
+</span></span><span style="display:flex;"><span>	shadow_coord.st <span style="color:#f92672">=</span> shadow_coord.st <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.5f</span> <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// texel_size.x = texel_size.y = 2048
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> dilation <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span>;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> d1 <span style="color:#f92672">=</span> dilation <span style="color:#f92672">*</span> texel_size.x <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.125</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> d2 <span style="color:#f92672">=</span> dilation <span style="color:#f92672">*</span> texel_size.x <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.875</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> d3 <span style="color:#f92672">=</span> dilation <span style="color:#f92672">*</span> texel_size.x <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.625</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> d4 <span style="color:#f92672">=</span> dilation <span style="color:#f92672">*</span> texel_size.x <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.375</span>;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// acne
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    shadow_coord.z <span style="color:#f92672">-=</span> <span style="color:#ae81ff">0.001f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> result <span style="color:#f92672">=</span> (
+</span></span><span style="display:flex;"><span>        <span style="color:#ae81ff">2.0</span> <span style="color:#f92672">*</span> texture(shadow_tex,vec3(shadow_coord.xy,shadow_coord.z)) <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>        texture( shadow_tex, vec3(shadow_coord.xy <span style="color:#f92672">+</span> vec2(<span style="color:#f92672">-</span>d2,  d1), shadow_coord.z )) <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>        texture( shadow_tex, vec3(shadow_coord.xy <span style="color:#f92672">+</span> vec2(<span style="color:#f92672">-</span>d1, <span style="color:#f92672">-</span>d2), shadow_coord.z )) <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>        texture( shadow_tex, vec3(shadow_coord.xy <span style="color:#f92672">+</span> vec2( d2, <span style="color:#f92672">-</span>d1), shadow_coord.z )) <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>        texture( shadow_tex, vec3(shadow_coord.xy <span style="color:#f92672">+</span> vec2( d1,  d2), shadow_coord.z )) <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>        texture( shadow_tex, vec3(shadow_coord.xy <span style="color:#f92672">+</span> vec2(<span style="color:#f92672">-</span>d4,  d3), shadow_coord.z )) <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>        texture( shadow_tex, vec3(shadow_coord.xy <span style="color:#f92672">+</span> vec2(<span style="color:#f92672">-</span>d3, <span style="color:#f92672">-</span>d4), shadow_coord.z )) <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>        texture( shadow_tex, vec3(shadow_coord.xy <span style="color:#f92672">+</span> vec2( d4, <span style="color:#f92672">-</span>d3), shadow_coord.z )) <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>        texture( shadow_tex, vec3(shadow_coord.xy <span style="color:#f92672">+</span> vec2( d3,  d4), shadow_coord.z ))
+</span></span><span style="display:flex;"><span>    ) <span style="color:#f92672">/</span> <span style="color:#ae81ff">10.0f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> vec3(result<span style="color:#f92672">*</span>result);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>下图为9次采样的软阴影：</p>
+<p><img src="/images/Vulkan%E4%B8%AD%E9%92%88%E5%AF%B9ShadowMap%E6%8F%90%E4%BE%9B%E7%9A%84%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96.assets/image-20210505152220483.png" alt="Image"></p>
+<p>当然如果不考虑性能还可以结合PCSS一起使用：</p>
+<p><img src="/images/Vulkan%E4%B8%AD%E9%92%88%E5%AF%B9ShadowMap%E6%8F%90%E4%BE%9B%E7%9A%84%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96.assets/image-20210505153105083.png" alt="Image"></p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">random</span>(vec3 seed, <span style="color:#66d9ef">int</span> i)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    vec4 seed4 <span style="color:#f92672">=</span> vec4(seed,i);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> dot_product <span style="color:#f92672">=</span> dot(seed4, vec4(<span style="color:#ae81ff">12.9898</span>,<span style="color:#ae81ff">78.233</span>,<span style="color:#ae81ff">45.164</span>,<span style="color:#ae81ff">94.673</span>));
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> fract(sin(dot_product) <span style="color:#f92672">*</span> <span style="color:#ae81ff">43758.5453</span>);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// pcss 查找遮挡物
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>vec2 <span style="color:#a6e22e">pcss_search_blocker</span>(<span style="color:#66d9ef">float</span> bias,vec4 shadow_coord,<span style="color:#66d9ef">float</span> NoL,<span style="color:#66d9ef">float</span> radius,sampler2DShadow shadowdepth_tex,vec2 texel_size) 
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> blocker_depth <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0</span>;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> count <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">int</span> flag <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> x <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; x <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">32</span>; x<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">int</span> index <span style="color:#f92672">=</span> <span style="color:#66d9ef">int</span>( <span style="color:#ae81ff">32.0</span> <span style="color:#f92672">*</span> random(shadow_coord.xyy,x) ) <span style="color:#f92672">%</span> <span style="color:#ae81ff">32</span>;
+</span></span><span style="display:flex;"><span>		vec2 sample_uv <span style="color:#f92672">=</span> vec2(radius) <span style="color:#f92672">*</span> poisson_disk_32[index] <span style="color:#f92672">*</span> texel_size <span style="color:#f92672">+</span> shadow_coord.st;
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">float</span> dist <span style="color:#f92672">=</span> texture(shadowdepth_tex, vec3(sample_uv,shadow_coord.z)).r;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span> (shadow_coord.w <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0.0f</span> <span style="color:#f92672">&amp;&amp;</span> dist <span style="color:#f92672">&lt;</span> shadow_coord.z <span style="color:#f92672">-</span> bias) 
+</span></span><span style="display:flex;"><span>		{
+</span></span><span style="display:flex;"><span>			blocker_depth <span style="color:#f92672">+=</span> dist;
+</span></span><span style="display:flex;"><span>			count <span style="color:#f92672">+=</span> <span style="color:#ae81ff">1.0</span>;
+</span></span><span style="display:flex;"><span>			flag <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span>(flag <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span> vec2(blocker_depth <span style="color:#f92672">/</span> count,<span style="color:#66d9ef">float</span>(flag));
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> vec2(<span style="color:#ae81ff">1.0f</span>,<span style="color:#ae81ff">0.0f</span>);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// pcss软阴影
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">shadow_pcss</span>(vec4 sample_clip_pos,<span style="color:#66d9ef">float</span> NoL,sampler2DShadow shadowdepth_tex,<span style="color:#66d9ef">float</span> penumbra_width,<span style="color:#66d9ef">float</span> radius)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    ivec2 tex_dim <span style="color:#f92672">=</span> textureSize(shadowdepth_tex, <span style="color:#ae81ff">0</span>).xy;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> dx <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span> <span style="color:#f92672">/</span> <span style="color:#66d9ef">float</span>(tex_dim.x);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> dy <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span> <span style="color:#f92672">/</span> <span style="color:#66d9ef">float</span>(tex_dim.y);
+</span></span><span style="display:flex;"><span>	vec2 texel_size <span style="color:#f92672">=</span> vec2(dx, dy);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> bias <span style="color:#f92672">=</span> max(<span style="color:#ae81ff">0.05</span> <span style="color:#f92672">*</span> (<span style="color:#ae81ff">1.0</span> <span style="color:#f92672">-</span> NoL), <span style="color:#ae81ff">0.005</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	vec4 shadow_coord <span style="color:#f92672">=</span> sample_clip_pos <span style="color:#f92672">/</span> sample_clip_pos.w;
+</span></span><span style="display:flex;"><span>	shadow_coord.st <span style="color:#f92672">=</span> shadow_coord.st <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.5f</span> <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	vec2 ret <span style="color:#f92672">=</span> pcss_search_blocker(bias,shadow_coord, NoL, radius,shadowdepth_tex,texel_size);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> avg_blocker_depth <span style="color:#f92672">=</span> ret.x;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span>(ret.y <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">0.5f</span>)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span> <span style="color:#ae81ff">1.0f</span>; <span style="color:#75715e">// 提前退出节省非阴影区域的pcf消耗。
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> penumbra_size <span style="color:#f92672">=</span> max(shadow_coord.z <span style="color:#f92672">-</span> avg_blocker_depth,<span style="color:#ae81ff">0.1f</span>) <span style="color:#f92672">/</span> avg_blocker_depth <span style="color:#f92672">*</span> penumbra_width;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> shadow_pcf(bias,shadow_coord, NoL, penumbra_size,shadowdepth_tex,texel_size);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>画外音：</p>
+<p>PCSS效果很好，但我以后都不会考虑了，因为实在是太慢了。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/flower">Flower</a>
+        &nbsp;
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/">Vulkan利用SpirV-Cross提取Shader反射信息来自动构建MeshDrawCommand</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/">UE4移动端中的两种Resolve</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%A4%E7%A7%8D%E8%8A%B1%E5%93%A8%E4%BD%86%E5%AE%9E%E7%94%A8%E7%9A%84%E5%85%A8%E5%B1%8Fquad%E7%BB%98%E5%88%B6%E6%96%B9%E6%B3%95/">两种好用的全屏Quad绘制方法</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6sss%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C/">移动端树叶SSS效果制作</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%9C%B0%E5%9B%BE%E7%BA%B9%E7%90%86%E6%8B%BC%E6%8E%A5%E6%B7%B7%E5%90%88%E5%AE%9E%E7%8E%B0%E6%9B%B4%E5%A4%9A%E7%9A%84%E5%9C%B0%E5%BD%A2%E7%BB%86%E8%8A%82/">地形纹理拼接混合实现更多的地形细节</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

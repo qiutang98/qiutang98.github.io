@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 简单实现UE5中的VirtualShadowMap与性能对比 | 月光下的旅行。 </title>
+  <meta name="description" content="UE5中VirtualShadowMap的实现原理与性能对比">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue5%E7%9A%84virtualshadowmap%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86%E4%B8%8E%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >简单实现UE5中的VirtualShadowMap与性能对比</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2022-03-29T00:00:00Z">March 29, 2022</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+      <a href="/categories/unreal">Unreal</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>​    在2021年UE5的Siggraph大会上，Epic的PPT简略提到了VirtualShadowMap的实现原理，但还是看得一脸懵逼。</p>
+<p>​	新台式电脑到货后，重新下载了UE5开始调试，初略了解了VSM的运行原理，在最近一个月来都在引擎中实现Directional Light的Virtual Shadow Map, 这里分享一下具体原理与实现细节。</p>
+<p>​	常规的ShadowMap算法中，先从灯光方向得到一张ShadowMap。</p>
+<p>​	如果Shadowmap分辨率过低，极易出现阴影锯齿。缓解锯齿的方法是增加ShadowMap的分辨率，比如ShadowMap分辨率提高到16k * 16k。</p>
+<p><img src="/images/UE5VSM/01.jpg" alt="Image"></p>
+<p>​	问题在于我们没有这么多显存可用。因此没办法直接申请这么大的ShadowMap。</p>
+<p>​	假设存在一张虚拟的16k*16k巨大shadowmap，首先把它划分为块，称为Virtual Tile：</p>
+<p><img src="/images/UE5VSM/02.jpg" alt="Image"></p>
+<p>​	渲染完Depth pass后，我们有当前帧的深度，从深度重建世界空间位置后，再投影到灯光的视口下，转化为NDC空间坐标后。很简单就能得出当前像素位于哪块Virtual Tile上。</p>
+<p>​	如下图所示，左边红色像素转化为灯光视口下后对于右边的绿色部分Virtual Tile，我们标记这部分的Virtual Tile设为Used。</p>
+<p><img src="/images/UE5VSM/03.jpg" alt="Image"></p>
+<p>​	当前帧每个像素深度都转化一次，得到所有的Used Virtual Tiled（标为绿色的Virtual Tile）：</p>
+<p><img src="/images/UE5VSM/04.jpg" alt="Image"></p>
+<p>​	由于我们只需要渲染当前屏幕中每个像素阴影，所以，对于一张16k*16k的shadowmap,我们仅会用到标绿的Used Virtual Tile，其余的Virtual Tile都是不需要用到的。</p>
+<p>​	于是，我们只需要渲染使用到的Virtual Tile的深度就行了。</p>
+<p>​	为了盛放这些Used Virtual Tile数据，我们申请一张支持UAV读写的RenderTarget，称为Physical Image，然后把Used Virtual Tile整整齐齐的放到这个Physical Image里面，这个步骤称为Tile Padding，其中，Physical Image划分的Tile称为Physical Tile，并且，保证Virtual Tile的尺寸和Physical Tile相同。</p>
+<p>​	渲染ShadowMap深度时，我们使用和Physical Tile大小相等的光栅化视口，关闭深度比较，传入Physical Image的UAV View，在pixel shader中判断当前片元该往哪块Physical Tile写入深度，并使用Atmoic Compare操作实现深度测试和写入。</p>
+<p><img src="/images/UE5VSM/05.jpg" alt="Image"></p>
+<p>​	Lighting部分计算阴影时，只需判断当前深度位于哪块Virtual Tile上，再转化为Physical Tile的位置，然后从Physical Image中读光源深度，接下来走正常shadowmap lighting流程即可。</p>
+<p>​	如果场景非常大，单张Virtual Shadow Map实际上是满足不了精度需求的。</p>
+<p>​	于是UE5使用Mipmap作为适配，以1 screen pixel 对应 1 shadowmap texel作为标准计算Mipmap的Level。</p>
+<p>​	首先是Mipmap适配的原理：</p>
+<p>​	如下图所示，红点为当前相机的世界位置，最高一级mip0的投影范围最小，每个virtual tile的shadowmap精度最高，此后每一级mip覆盖的面积都是原来的2 * 2倍。</p>
+<p>​	Mipmap类型的Virtual shadowmap流程与单级Virtual Shadow map类似，不过多了一个Mipmap Level的计算。首先根据深度算出当前屏幕对应的Mipmap Level级别。然后再到对应的Virtual Shadow Map中标记对应的Tile是否为Used。Tile Padding时，由于每一级Mipmap的Virtual Shadow Map Tile大小是一样的，所以是可以Padding到一张Physical Image中的。</p>
+<p><img src="/images/UE5VSM/06.jpg" alt="Image"></p>
+<p>​	接下来是Mipmap的Level的计算公式。</p>
+<p>​	公式相同于屏幕空间纹理的mipmap level计算公式。根据当前帧的屏幕深度我们可以计算出当前屏幕像素到相机的距离，首先消除fov对xy方向的缩放，接下来使用log公式计算z方向的lod bias，具体代码如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-glsl" data-lang="glsl"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> getClipmapLODBasicBias(<span style="color:#66d9ef">in</span> <span style="color:#66d9ef">const</span> mat4 projectMatrix, <span style="color:#66d9ef">in</span> <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec2</span> screenResolution)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// we expected 1 pixel on screen match 1 texel on shadow map.</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// we keep a virtual 16k * 16k shadow map.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// and our screen maybe just 2k or 4k resolution.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// so add a basic lod bias to avoid waste.</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// fov scale on xy.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> xScale <span style="color:#f92672">=</span> abs(projectMatrix[<span style="color:#ae81ff">0</span>][<span style="color:#ae81ff">0</span>]);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> yScale <span style="color:#f92672">=</span> abs(projectMatrix[<span style="color:#ae81ff">1</span>][<span style="color:#ae81ff">1</span>]);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">vec2</span> renderScreenSize <span style="color:#f92672">=</span> screenResolution <span style="color:#f92672">*</span> <span style="color:#66d9ef">vec2</span>(xScale, yScale);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> maxEdgeSize <span style="color:#f92672">=</span> max(renderScreenSize.x, renderScreenSize.y);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> basicClipMapResolution <span style="color:#f92672">=</span> VIRTUAL_CLIP_MAP_PAGE_DIM_XY <span style="color:#f92672">*</span> VIRTUAL_PAGE_SiZE;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> basicScale <span style="color:#f92672">=</span> basicClipMapResolution <span style="color:#f92672">/</span> maxEdgeSize;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// high quality.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> lodBias <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0</span>f;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// basicScale * 2.0f to add some space for lodBias, for more easy to controling.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> max(<span style="color:#ae81ff">0.0</span>f, lodBias <span style="color:#f92672">+</span> log2(basicScale <span style="color:#f92672">*</span> <span style="color:#ae81ff">2.0</span>f));
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>​	这个1 screen pixel 对应 1 shadow map texel只能是某种程度上的对应，太阳接近地平线时，拉长的阴影分辨率非常的低，效果并不好。</p>
+<p>​	对这个问题，UE5的建议是减少LOD bias，这回导致Mipmap0覆盖的Used Tile数会非常的多，最后Physical Tiled数目也会增加。</p>
+<p>​	我的做法是太阳接近地平线时切换回Sample distribution shadow map方法，增加了一个Shadow Edge的Mask，并在切换途中降低Mask区域TAA的Blend Factor实现柔和渐变。</p>
+<p>​	简单原理基本就只有这些，接下来说明一下在实现中的Pipeline详细。</p>
+<p>​	Virtual Shadow Map需要配合Gpu Batch流程，UE5中使用庞大的Nanite实现三角形级别的Gpu Batch，我这里仅是实现了Per object的Batch流程，实现的光源类型是Directional Light，使用的图形Api是Vulkan1.2，相关渲染管线如下：</p>
+<p><img src="/images/UE5VSM/07.jpg" alt="Image"></p>
+<p>​	首先设每一级Virtual ShadowMap的Tile数为VIRTUAL_CLIP_MAP_PAGE_DIM_XY， 设有VIRTUAL_CLIPMAP_COUNT个Mimap。</p>
+<p>​	在Gbuffer Pass后，传入的DepthStencil用于计算每一级Mipmap Virtual ShadowMap的Used Tile情况，这个Pass我称为MarkUsedVirtualTilePass.</p>
+<p>​	这个Pass的步骤很简单，申请每一级Virtual Shadow Map的Virtual Tile Flag数组，判断屏幕中深度落入到这个Tile时，把它Mark为true即可。</p>
+<p>​	简单的判断逻辑如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-glsl" data-lang="glsl"><span style="display:flex;"><span><span style="color:#75715e">// screen space.</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> main()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// ...</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec3</span>  worldPos <span style="color:#f92672">=</span> posWorldRebuild.xyz <span style="color:#f92672">/</span> posWorldRebuild.w;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> basicLODOffset <span style="color:#f92672">=</span> getClipmapLODBasicBias(viewData.camProj, <span style="color:#66d9ef">vec2</span>(textureSize(inDepth,<span style="color:#ae81ff">0</span>)));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// first get world clipmap level, then get page location.</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> viewToWorldDistance <span style="color:#f92672">=</span> length(worldPos <span style="color:#f92672">-</span> viewData.camWorldPos.xyz) <span style="color:#f92672">*</span> VIRTUAL_DISTANCE_UNIT_SCALE;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> log2Distance <span style="color:#f92672">=</span> log2(viewToWorldDistance);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> absoluteClipmapLevel <span style="color:#f92672">=</span> <span style="color:#66d9ef">int</span>(floor(log2Distance <span style="color:#f92672">+</span> basicLODOffset));
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> relativeClipmapLevel <span style="color:#f92672">=</span> max(absoluteClipmapLevel <span style="color:#f92672">-</span> VIRTUAL_CLIPMAP_MIN_LEVEL, <span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(relativeClipmapLevel <span style="color:#f92672">&gt;=</span> VIRTUAL_CLIPMAP_COUNT)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec4</span> shaodwProjectPos <span style="color:#f92672">=</span> viewData.clipMapViewProjectMatrix[relativeClipmapLevel] <span style="color:#f92672">*</span> <span style="color:#66d9ef">vec4</span>(worldPos, <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>        shaodwProjectPos.xyz <span style="color:#f92672">=</span> shaodwProjectPos.xyz <span style="color:#f92672">/</span> shaodwProjectPos.w;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">bool</span> bShaodwInClip <span style="color:#f92672">=</span> shaodwProjectPos.w <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0.0</span>f <span style="color:#f92672">&amp;&amp;</span> 
+</span></span><span style="display:flex;"><span>        (shaodwProjectPos.x <span style="color:#f92672">&gt;=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">&amp;&amp;</span> shaodwProjectPos.x <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1.0</span>f) <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>        (shaodwProjectPos.y <span style="color:#f92672">&gt;=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">&amp;&amp;</span> shaodwProjectPos.y <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1.0</span>f) <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>        (shaodwProjectPos.z <span style="color:#f92672">&gt;=</span>  <span style="color:#ae81ff">0.0</span>f <span style="color:#f92672">&amp;&amp;</span> shaodwProjectPos.x <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(<span style="color:#f92672">!</span>bShaodwInClip)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> perPageDim <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>f <span style="color:#f92672">/</span> <span style="color:#66d9ef">float</span>(VIRTUAL_CLIP_MAP_PAGE_DIM_XY);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// remap [0, 1]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">vec2</span> posXY <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.5</span>f <span style="color:#f92672">*</span> (shaodwProjectPos.xy <span style="color:#f92672">+</span> <span style="color:#ae81ff">1.0</span>f);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> xDim <span style="color:#f92672">=</span> <span style="color:#66d9ef">int</span>(floor(posXY.x <span style="color:#f92672">/</span> perPageDim));
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> yDim <span style="color:#f92672">=</span> <span style="color:#66d9ef">int</span>(floor(posXY.y <span style="color:#f92672">/</span> perPageDim)); <span style="color:#75715e">// sometimes it is 125?</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> flatPos <span style="color:#f92672">=</span> yDim <span style="color:#f92672">*</span> VIRTUAL_CLIP_MAP_PAGE_DIM_XY <span style="color:#f92672">+</span> xDim
+</span></span><span style="display:flex;"><span>     <span style="color:#f92672">+</span> relativeClipmapLevel <span style="color:#f92672">*</span> VIRTUAL_CLIP_MAP_PAGE_DIM_XY <span style="color:#f92672">*</span> VIRTUAL_CLIP_MAP_PAGE_DIM_XY;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// mark page pos.</span>
+</span></span><span style="display:flex;"><span>    flags[flatPos].flag <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>​	第二个Pass是PreparePhysicalTilePass，Dispatch一个VIRTUAL_CLIPMAP_COUNT * VIRTUAL_CLIP_MAP_PAGE_DIM_XY * VIRTUAL_CLIP_MAP_PAGE_DIM_XY大小的计算着色器，这样每个线程对应一个Virtual Tile，然后读取上一个Pass中的Virtual Tile Flag数组数据，如果标记为true，则Atomic Add得到当前Used Virtual Tile对应的Physical Tile的Id，然后把Id数据存到SSBO Buffer中，便于渲染深度时和Lighting计算阴影时可以直接得到对应的转换数据：</p>
+<p>​	第三个Pass是GpuCulling，在第二个Pass结束后，我们实际上已经可以画shadow depth了，不过由于每个Tile都是一个视口，并且一个物体可能在多个Tile中渲染，常规做法非常慢，所以需要Gpu Culling和Instance Merge.</p>
+<p>​	我的Culling仅做了常规的Per Tile Frustum Culling，得到一个IndexedIndirectCommand Buffer，其定义如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-glsl" data-lang="glsl"><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> IndexedIndirectCommand 
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    uint indexCount;
+</span></span><span style="display:flex;"><span>    uint instanceCount;
+</span></span><span style="display:flex;"><span>    uint firstIndex;
+</span></span><span style="display:flex;"><span>    uint vertexOffset;
+</span></span><span style="display:flex;"><span>    uint firstInstance;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    uint objectId;
+</span></span><span style="display:flex;"><span>};
+</span></span></code></pre></div><p>​	直接Culling后DrawIndexIndirect还是不够快，Nsight Profile显示Bounding是在VertexShader的Input Stream阶段，因此我做了一个DrawIndexIndirect Buffer Sort Pass, 按照 firstIndex + vertex Offset 做排序，使用排序后的buffer再绘制。</p>
+<p>​	最后一个优化是instance优化，（不过在RTX显卡上似乎是负优化），在Sort Pass后，将 firstIndex 和vertex offset相同的command中instance count相加，然后再根据instance count做一次排序，刷新drawcount,然后使用instance merge的buffer和刷新后drawcount调用<a href="https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkCmdDrawIndexedIndirectCount.html">vkCmdDrawIndexedIndirectCount</a>.</p>
+<p>​	DepthOnlyPass和LightingPass根据PreparePhysicalTilePass得到的索引数据，去索引全局UniformBuffer中的VirtualTile中的ViewProjectionMatrix即可。</p>
+<p>​	DepthOnlyPass Fragment深度写入阶段，使用AtomicComp操作往Physical Image对应的Tile 位置上写入信息，另外，GLSL不支持float类型的Atomic操作，所以先转化为Uint类型再写入。</p>
+<h3 id="表现比较">表现比较</h3>
+<p>​	由于我没有做Virtual ShadowMap Cache，实际上测下来Virtual Shadowmap的效率是很捉急的，另外Culling阶段还可以用hiz进一步剔除。</p>
+<p>​	光栅化阶段我是按照Tile大小光栅化，由于每个Tile只设了128*128，光栅化速度很慢，似乎可以用MultiView扩展加速，但我没用过MultiView功能所以没有弄。</p>
+<p>​	但哪怕是这种没有优化过的VSM，效果都媲美 8级SDSM, 速度接近于 4级SDSM（Bistro场景）。</p>
+<p>​	如下图所示，VSM Bias设为-1.0f, 得到清晰锐利的阴影边缘（没有任何filter）。</p>
+<p><img src="/images/UE5VSM/08.jpg" alt="Image"></p>
+<p>​	软阴影部分，我没有使用UE5的SMRT算法，而是使用固定大小的泊松盘采样，由于ShadowMap精度很高，所以我使用梯度噪声逐帧旋转泊松盘，配和TAA在4次采样内即可让软阴影收敛：</p>
+<p>​	Hard Shadow Only：</p>
+<p><img src="/images/UE5VSM/09.jpg" alt="Image"></p>
+<p>​	Soft Shadow Only：</p>
+<p><img src="/images/UE5VSM/10.jpg" alt="Image"></p>
+<p>​	Composite：</p>
+<p><img src="/images/UE5VSM/11.jpg" alt="Image"></p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+        <a href="/tags/unreal">Unreal</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/">UE4移动端中的两种Resolve</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/">UE4.26 移动端手机Tiled Resolve性能记录</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/">Vulkan TAA实现与细节</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/">关于Vulkan渲染画面数据杂乱但Renderdoc下正常问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/">Vulkan异步队列与异步纹理上传</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

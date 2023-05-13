@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> TextureCache Miss问题 | 月光下的旅行。 </title>
+  <meta name="description" content="TextureCache Miss问题">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/texturecache-miss%E9%97%AE%E9%A2%98/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >TextureCache Miss问题</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2020-12-03T00:00:00Z">December 03, 2020</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>之前做地形纹理拼接时遇到大量的Texture Cache Miss问题，导致着色程序的性能下降，正好周末有空可以看这个论文：http://fileadmin.cs.lth.se/cs/Personal/Michael_Doggett/pubs/doggett12-tc.pdf 。</p>
+<p>论文Texture Cache的相关内容如下：</p>
+<p>Gpu内部架构的简易示例图如下：</p>
+<p><img src="/images/TextureCache%E9%97%AE%E9%A2%98/a.png" alt="Image"></p>
+<ol>
+<li>Texture Cache物理位置在图形核心（Texture Mapping Graphics）处理器旁边，因此高吞吐低延迟，它是专门存储贴图纹理数据的一片只读Cache，上方有很多shader核心，它们共享下方的纹理单元（Texture units）。着色器执行纹理读取时，通过总线向纹理单元发送请求，此时Shader可能继续执行也可能被挂起等待返回的结果，这一步是异步的。而纹理单元处理请求，执行寻址操作(ddx(uv),ddy(uv)来选择mip级别， 执行滤波操作（如双向过滤的滤波，三向过滤的mipmap结果混合）， 将uv转换为纹素坐标（uv*该级mipmap的长宽），clamp/wrap，etc)，得到需要纹理数组的下标，之后在缓存层级中去查找。</li>
+</ol>
+<p><img src="/images/TextureCache%E9%97%AE%E9%A2%98/b.png" alt="Image"></p>
+<ol start="2">
+<li>Gpu的缓存层级类似于Cpu的高速缓存层级，也分为一级、二级等缓存，一级物理位置最接近Shader核心并且无需通过CrossBar传递，采样时，Gpu会一次加载当前位置临近的纹理数据进L1 Texture Cache中，如果每次采样都是按顺序采样或者采样临近位置的纹理数据，那么Cache中，Cache的命中率会非常的高，无需频繁从L2级Cache加载数据。</li>
+</ol>
+<p>而那个拼接式的地形纹理因为每次都在片元着色器重新计算uv和mip级别，基本每次都没有命中Cache，Texture Cache Miss非常严重，导致采样贴图性能下降，虽然收益于带宽，但是最终也提高了每次采样纹理的代价。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/">UE4.26 移动端手机Tiled Resolve性能记录</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

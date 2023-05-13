@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> UE4.26 Lightmap从烘焙到渲染 | 月光下的旅行。 </title>
+  <meta name="description" content="UE4.26 Lightmap从烘焙到渲染">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >UE4.26 Lightmap从烘焙到渲染</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-05-30T00:00:00Z">May 30, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/unreal">Unreal</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>这篇博文主要是UE4 Lightmap的工程逻辑分析，主要帮助想要改Lightmap（TOD）的人快速了解整个流程，不太涉及到数学相关知识。</p>
+<p>UE4.26.2移动端使用LightMass烘焙的光照信息。</p>
+<p>关于LightMass，知乎上的Jiff大佬的解析非常的详细。</p>
+<p>我们重点放在Lightmass烘焙完光照信息后，传回UE4时发生的事情。</p>
+<p>首先是量化（Quantize）光照信息，也就是把一个float类型的光照信息，转成uint8(byte)大小的数据，便于之后存放在Lighmap（R8G8B8）中。</p>
+<p>这部分代码函数位于项目 UnrealLightmass/Private/Lighting/LightmapData.cpp中：</p>
+<p><img src="/images/UELightmap/image-20210606223700695.png" alt="Image"></p>
+<p>为了减少量化过程的光照信息损失，UE4采用的特殊的量化函数，其中，移动端的量化函数如下：</p>
+<p><img src="/images/UELightmap/image-20210606224053255.png" alt="Image"></p>
+<p>Jiff大佬把函数公式和图像都给出来了：</p>
+<p><img src="/images/UELightmap/image-20210606224141576.png" alt="Image"></p>
+<p><img src="/images/UELightmap/image-20210606224156170.png" alt="Image"></p>
+<p>这样，光照图编码时暗部的保留细节更多。</p>
+<p>接下来是LightMap的Encode &amp;&amp; Saved部分，此时Lighmass光照数据回流到引擎中，进入Engine/Private/Lightmap.cpp：</p>
+<p>主要逻辑记录在FLightMap2D::EncodeTextures中：</p>
+<p><img src="/images/UELightmap/image-20210606224716763.png" alt="Image"></p>
+<p>UE4增加了一个FLightMapPendingTexture结构体来处理这些光照数据，在里面通过StartEncoding来处理Lightmap的编码及压缩：</p>
+<p><img src="/images/UELightmap/image-20210606225641766.png" alt="Image"></p>
+<p>进入该StartEncoding函数，它包含了所有类型的Lightmap编码函数，比如ShadowMap的编码、SkylightOcclusion的编码、Coefficient的编码。</p>
+<p><img src="/images/UELightmap/image-20210606225838744.png" alt="Image"></p>
+<p>这下面几个函数非常重要，基本上如果想改UE4的Lightmap编码的话，基本都在这里面改：</p>
+<p><img src="/images/UELightmap/image-20210606225952440.png" alt="Image"></p>
+<p>以EncodeCoefficientTexture为例走一遍这个流程：</p>
+<p>首先在StartEncoding内设置对应的Texture格式：</p>
+<p><img src="/images/UELightmap/image-20210606230216198.png" alt="Image"></p>
+<p>进入EncodeCoefficientTexture函数，首先注意我下面红框处的代码：</p>
+<p><img src="/images/UELightmap/image-20210606230314856.png" alt="Image"></p>
+<p>在这里设置了LQ质量的Lightmap使用R8G8B8格式，节省了Alpha通道，相应的，LQ Lightmap因此可以使用DXT1压缩格式，大小比HQ小了一半：</p>
+<p><img src="/images/UELightmap/image-20210606230507957.png" alt="Image"></p>
+<p><img src="/images/UELightmap/image-20210606230526053.png" alt="Image"></p>
+<p>UE4的LightMap上半部分存的是光照颜色，下半部分存的是最大贡献的光照方向，这样，在渲染时，可以用像素法线点积最大贡献的光照方向，近似模拟一个像素级的SH漫反射。</p>
+<p><img src="/images/UELightmap/image-20210606231140863.png" alt="Image"></p>
+<p>这个USE_LM_DIRECTIONALITY宏在材质球里可以直接通过去勾的方式取消开启，这样UE就用默认的0.6作为SH经验值了。</p>
+<p><img src="/images/UELightmap/image-20210606232113318.png" alt="Image"></p>
+<p>另外，存数据的时候，UE4用的最原始的操纵内存的方式。233。</p>
+<p>首先申请一块足够大小的MipCoverageData0, 然后计算好上半部分和下半部分的内存偏移。</p>
+<p><img src="/images/UELightmap/image-20210606230732922.png" alt="Image"></p>
+<p>接下来就是分别为RGBA填入数据了：</p>
+<p><img src="/images/UELightmap/image-20210606231642899.png" alt="Image"></p>
+<p>如果要自定义Lightmap格式，比如把下半部分的最大贡献光照方向去掉，或者在LQ Lightmap的A通道存放AO信息等，基本都在类似的地方修改。</p>
+<p>剩下的Lightmap2D::PostEncode部分基本都是些UE相关的处理，基本没有改动的必要。</p>
+<p>接下来是Lightmap的指定部分。</p>
+<p>使用到Lightmap的只有静态物体：StaticMeshComponent和LandscapeComponent。</p>
+<p>首先来康康StaticMeshComponent是怎么指定Lightmap的：</p>
+<p>要想缕清这部分的代码逻辑，必须清楚UE4是一个多线程引擎架构，GameThread和RenderThread是分离开的，而为了两者之间的通讯，一般GameThread中的对象，会备份一个Proxy，当GameThread中该对象发生更改时，必须手动通知Renderer更新数据。</p>
+<p>以StaticMesh为例，UStaticMeshComponent类为游戏线程中的StaticMeshComponent，相应的，UE4增加了一个FStaticMeshSceneProxy类：</p>
+<p><img src="/images/UELightmap/image-20210606233755522.png" alt="Image"></p>
+<p>Lightmap指定发生在FStaticMeshSceneProxy的构造函数中：</p>
+<p><img src="/images/UELightmap/image-20210606234017452.png" alt="Image"></p>
+<p>注意红框标出部分，我们进入该LOD构造函数：</p>
+<p><img src="/images/UELightmap/image-20210606234120966.png" alt="Image"></p>
+<p>逻辑很清晰，GameThread中的UStaticMeshComponent作为InComponent，传入对应的FMeshMapBuildData。</p>
+<p>溯源到UStaticMeshComponent::GetMeshMapBuildData。</p>
+<p><img src="/images/UELightmap/image-20210606234354733.png" alt="Image"></p>
+<p>其实这里已经可以看到LightScenario的相关逻辑处理了233。</p>
+<p>很简单，获取Component的Level，然后获取Level中对应的MapBuildData并返回，当然这里额外处理了LightScenario的逻辑。</p>
+<p>此时，返回之前的LOD构造函数，我们看看那几个Set函数，指定了FLightCacheInterface中的LightMap等信息。</p>
+<p><img src="/images/UELightmap/image-20210606234719176.png" alt="Image"></p>
+<p>注意一点喔，FLODInfo是继承自FLightCacheInterface的喔。（奇怪的继承）</p>
+<p><img src="/images/UELightmap/image-20210606234824705.png" alt="Image"></p>
+<p>除开StaticMesh会用到Lightmap，Landscape也会用到Lightmap。</p>
+<p>Landscape也是同样的套路，使用FLandscapeLCI代理存储在FLandscapeComponentSceneProxy中，注意它同样继承自FLightCacheInterface：</p>
+<p><img src="/images/UELightmap/image-20210610223326439.png" alt="Image"></p>
+<p>由于LandscapeComponent没有LOD，因此直接设置LigmapData就可以了。</p>
+<h2 id="shader的binding部分">Shader的Binding部分</h2>
+<p>UE4有一套独特的MeshDrawProcessor处理流程，根据RenderPass需求的资源格式（比如ShadowDepth Pass仅需顶点坐标和Mask数据、BasePass需要大部分数据、PrePass需要顶点和Mask数据等），于是在FMeshPassProcessor中组织好这些Primitive资源，渲染时调用对应Primitives的Draw：</p>
+<p>下面以移动端的Forward渲染管线为例：</p>
+<p>首先是UE的Forward渲染函数FMobileSceneRenderer::RenderForward：</p>
+<p>在渲染完PrePass后进入MobileBasePass：</p>
+<p><img src="/images/UELightmap/image-20210612182347504.png" alt="Image"></p>
+<p><img src="/images/UELightmap/image-20210612182447625.png" alt="Image"></p>
+<p>在RenderMobileBasePass函数中，先更新完场景相机相关的View UBO后就会调用视角中ParallelMeshDrawCommandPasses的DispatchDraw函数。</p>
+<p>而View中的ParallelMeshDrawCommandPasses则是在之前FMobileSceneRenderer::SetupMobileBasePassAfterShadowInit函数中Setup填充的。</p>
+<p><img src="/images/UELightmap/image-20210612184620047.png" alt="Image"></p>
+<p>UE4专门设计了一个全局函数类，利用它的初始化函数往一个全局表FPassProcessorManager::JumpTable里面填每个Pass对应的创建函数：</p>
+<p><img src="/images/UELightmap/image-20210612183401739.png" alt="Image"></p>
+<p>注册每个MeshPass时，则会经由该构造函数填入，比如MobileBasePass的注册如下：</p>
+<p><img src="/images/UELightmap/image-20210612183530880.png" alt="Image"></p>
+<p>其中MobileBasePass的注册函数如下：</p>
+<p><img src="/images/UELightmap/image-20210612183639167.png" alt="Image"></p>
+<p>FMeshPassProcessorRenderState 这个参数非常重要，标定了该Pass需要的一些渲染资源。</p>
+<p>其构造函数分别传入一个FSceneView和一个FRHIUniformBuffer，前者用于填充该视口下公用的ViewUniformBuffer，后者则是该Pass独有的UniformBuffer：</p>
+<p>对于MobileBasePass，其需求的列表如下：</p>
+<p><img src="/images/UELightmap/image-20210612184206863.png" alt="Image"></p>
+<p>这里的参数基本可以每帧修改，比如UE4.26.2移动端Forward管线的GTAO，MobileBasePass用了上一帧的AO Mask，该Mask就在这里指定。</p>
+<p>这里仅处理了MobileBasePass网格公用的UniformBuffer，但还没有处理每个网格独有的UniformBuffer。</p>
+<p>好比说，MobileBasePass里的所有物体渲染时都需要AmbientOcclusionTexture，而静态的StaticMesh渲染时需要传入Lightmap数据，动态的SkeletonMesh不需要Lightmap数据但是需要SH（ILC）数据。</p>
+<p>因此，UE用FMeshPassProcessor::Process函数来单独为每一个网格处理这种Shader变体情况。</p>
+<p>还是以移动端的MobileBasePass为例：</p>
+<p><img src="/images/UELightmap/image-20210612185402293.png" alt="Image"></p>
+<p><img src="/images/UELightmap/image-20210612185430209.png" alt="Image"></p>
+<p>以Lightmap的指定为例，Process函数参数需要传入ELightMapPolicyType，然后调用GetShaders找到对应的变体：</p>
+<p><img src="/images/UELightmap/image-20210612185801336.png" alt="Image"></p>
+<p>UE为了节省移动端的性能，在计算移动端点光源的动态光照时，使用的宏分支来控制计算而不是动态分支，因此还需要在CPU侧处理好点光源的数目：</p>
+<p><img src="/images/UELightmap/image-20210612190008928.png" alt="Image"></p>
+<p>在GetMobileBasePassShaders函数这里才是Lightmap的变体抉择策略：</p>
+<p><img src="/images/UELightmap/image-20210612190038823.png" alt="Image"></p>
+<p>在GetUniformMobileBasePassShaders则转入了根据材质选择具体的的Shader时候：</p>
+<p><img src="/images/UELightmap/image-20210612190254402.png" alt="Image"></p>
+<p>注意下方的模板继承关系：</p>
+<p><img src="/images/UELightmap/image-20210612190349717.png" alt="Image"></p>
+<p><img src="/images/UELightmap/image-20210612190914422.png" alt="Image"></p>
+<p>TUniformLightMapPolicy的Shader变体编译函数根据不同的Lightmap策略选择对应的变体编译函数。</p>
+<p>我们移动端就会跳到下面这个：</p>
+<p><img src="/images/UELightmap/image-20210612191025534.png" alt="Image"></p>
+<p>TUniformLightMapPolicy继承自FUniformLightMapPolicy，在类FUniformLightMapPolicy中：</p>
+<p><img src="/images/UELightmap/image-20210612191346216.png" alt="Image"></p>
+<p><img src="/images/UELightmap/image-20210612191406703.png" alt="Image"></p>
+<p>这里的LightmapResourceCluster就是指定的Lightmap数据了。</p>
+<p><img src="/images/UELightmap/image-20210612191548134.png" alt="Image"></p>
+<p><img src="/images/UELightmap/image-20210612191556669.png" alt="Image"></p>
+<p><img src="/images/UELightmap/image-20210612191612463.png" alt="Image"></p>
+<p>走到这里，UE已经把RenderPass对应的UBO Parameter和Shader变体都找到了。</p>
+<p>最后剩下的就是Lightmap UniformBuffer的Update了。</p>
+<p>先前的MoblieBasePass的Shader变体选择完后会调用GetShaders函数，最终会调用到FUniformLightMapPolicy::GetPixelShaderBindings里，在该GetPixelShaderBindings函数中将会调用SetupLCIUniformBuffers获取FLightCacheInterface*对应的FLightmapResourceCluster。</p>
+<p>很前面的时候提到FLodInfo和FLandscapeLCI都继承自FLightCacheInterface。经过MeshPassProcessor的逐物体处理时，该接口的FLightmapResourceCluster便可以直接获取调用了。</p>
+<p>而FLightCacheInterface里的FLightmapResourceCluster数据，在StaticMesh在渲染线程时就已经指定了，也就是我们一开始分析的那里，调用的SetResourceCluster初始化。</p>
+<p>到目前为止，所有的数据都已经设置完毕，渲染正常进行。</p>
+<h2 id="lightmap的解码">Lightmap的解码</h2>
+<p>咋编码的就咋解码，非常简单：</p>
+<p><img src="/images/UELightmap/image-20210612193630076.png" alt="Image"></p>
+<h2 id="友情tip">友情Tip</h2>
+<p>如果你正在为UE4开发两套Lightmap Lerp融合的Time Of Day方案，却发现但BlendWeight为1时完全还原不了第二套Lightmap的颜色信息，请检查你是否把第二套Lightmap的LightMapScale和LightMapAdd数据都传进来并参与了插值（否则它永远将为第一套的数据）。</p>
+<p><img src="/images/UELightmap/image-20210612193915191.png" alt="Image"></p>
+<p>另外，如果你是基于LightingScenario开发的，请立刻放弃换别的方法，因为LightScenario没办法做到Streaming加载，并且！！！要非常小心的处理昼夜过渡时的资源加载卸载，非常操蛋。</p>
+<p>如果想为UE4移动端添加昼夜变换效果，用一套Lightmap就足够了，透过对比度和亮度调节，简单方便，包体大小友好。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/unreal">Unreal</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/ue4%E5%8D%A1%E9%80%9A%E6%B8%B2%E6%9F%93%E5%B0%9D%E8%AF%95/">UE4卡通渲染尝试</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E9%99%8D%E5%88%86%E8%BE%A8%E7%8E%87%E7%A6%BB%E5%B1%8F%E5%8D%8A%E9%80%8F%E6%98%8E%E6%B8%B2%E6%9F%93%E7%9A%84%E5%9D%91/">UE4.22移动端降分辨率离屏半透明渲染的坑</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22-%E9%92%88%E5%AF%B9%E6%8D%8F%E8%84%B8%E7%9A%84shadowmap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92%E7%AE%97%E6%B3%95%E5%86%8D%E6%94%B9%E8%BF%9B/">虚幻4捏脸的ShadowMap投影包围盒算法再改进</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E5%AE%9E%E7%8E%B0grabpass%E6%8A%93%E5%B1%8F/">虚幻4.22移动端实现GrabPass抓屏</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B7%BB%E5%8A%A0%E4%B8%80%E6%AC%A1z-prepass/">虚幻引擎4.22手机添加一次Z-PrePass</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

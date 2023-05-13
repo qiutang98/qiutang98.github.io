@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> Vulkan CascadeShadowMap中的常见问题与解决方案 | 月光下的旅行。 </title>
+  <meta name="description" content="Vulkan CascadeShadowMap中的常见问题与解决方案">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >Vulkan CascadeShadowMap中的常见问题与解决方案</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-07-11T00:00:00Z">July 11, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+      <a href="/categories/flower">Flower</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>在先前的Vulkan CascadeShadowMap功能开发过程中，做了一个快速的CascadeShadowmap版本，其中还存在不少问题，这几天则将我的渲染器从前向管线升级到了延迟管线。正好一起把这些问题解决一遍。</p>
+<h3 id="问题一shadowmap-flicking">问题一：ShadowMap Flicking</h3>
+<p><img src="/images/VulkanCascadeShadowMap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88.assets/%E5%8A%A8%E7%94%BB.gif" alt="Image"></p>
+<p>当视口相机移动时，由级联视锥角点算出来的级联阴影正交投影矩阵不断发生变化，并且因为ShadowMap的分辨率不等与Fragment像素的分辨率，因此采样得到的ShadowDepth结果是在不停变化的，表现到屏幕上的效果就是每帧Cascade投影的范围在不停闪动。</p>
+<p>解决方法：</p>
+<ol>
+<li>使用球形包围盒来缓解Filcking现象。</li>
+<li>使用Align ShadowMap Resolution的方式来计算正交投影矩阵（可以彻底解决该问题）。</li>
+</ol>
+<p>详细代码如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// 计算视锥包围球
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>glm<span style="color:#f92672">::</span>vec3 intervalCenter <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>vec3(<span style="color:#ae81ff">0.0f</span>);
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span>(uint32 i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">8</span>; i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	intervalCenter <span style="color:#f92672">+=</span> intervalCorners[i];
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>intervalCenter <span style="color:#f92672">/=</span> <span style="color:#ae81ff">8.0f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 计算视锥半径
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">float</span> radius <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0f</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span>(uint32 i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">8</span>; i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> distance <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>length(intervalCorners[i] <span style="color:#f92672">-</span> intervalCenter);
+</span></span><span style="display:flex;"><span>    radius <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>max(radius,distance);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>radius <span style="color:#f92672">=</span> std<span style="color:#f92672">::</span>ceil(radius <span style="color:#f92672">*</span> <span style="color:#ae81ff">16.0f</span>) <span style="color:#f92672">/</span> <span style="color:#ae81ff">16.0f</span>;
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 计算球形包围盒角点
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>glm<span style="color:#f92672">::</span>vec3 maxExtents <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>vec3(radius);
+</span></span><span style="display:flex;"><span>glm<span style="color:#f92672">::</span>vec3 minExtents <span style="color:#f92672">=</span> <span style="color:#f92672">-</span> maxExtents;
+</span></span><span style="display:flex;"><span>glm<span style="color:#f92672">::</span>vec3 lightDir <span style="color:#f92672">=</span> normalize(inLightDir);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 计算LookAt矩阵
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>glm<span style="color:#f92672">::</span>mat4 lightViewMatrix <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>lookAt(
+</span></span><span style="display:flex;"><span>    intervalCenter <span style="color:#f92672">-</span> lightDir <span style="color:#f92672">*</span> <span style="color:#f92672">-</span>minExtents.z,
+</span></span><span style="display:flex;"><span>    intervalCenter,
+</span></span><span style="display:flex;"><span>    glm<span style="color:#f92672">::</span>vec3(<span style="color:#ae81ff">0.0f</span>,<span style="color:#ae81ff">1.0f</span>,<span style="color:#ae81ff">0.0f</span>) <span style="color:#75715e">// stable 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>); 
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 计算正交矩阵
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>glm<span style="color:#f92672">::</span>mat4 lightOrthoMatrix;
+</span></span><span style="display:flex;"><span>lightOrthoMatrix <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>ortho(
+</span></span><span style="display:flex;"><span>    minExtents.x,
+</span></span><span style="display:flex;"><span>    maxExtents.x,
+</span></span><span style="display:flex;"><span>    minExtents.y,
+</span></span><span style="display:flex;"><span>    maxExtents.y,
+</span></span><span style="display:flex;"><span>    <span style="color:#ae81ff">0.0f</span>,
+</span></span><span style="display:flex;"><span>    maxExtents.z <span style="color:#f92672">-</span> minExtents.z
+</span></span><span style="display:flex;"><span>);
+</span></span><span style="display:flex;"><span>inout[cascadeIndex].viewProj <span style="color:#f92672">=</span> lightOrthoMatrix <span style="color:#f92672">*</span> lightViewMatrix;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// ShadowMap Texel Align
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>vec4 shadowOrigin <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>vec4(<span style="color:#ae81ff">0.0f</span>,<span style="color:#ae81ff">0.0f</span>,<span style="color:#ae81ff">0.0f</span>,<span style="color:#ae81ff">1.0f</span>);
+</span></span><span style="display:flex;"><span>shadowOrigin <span style="color:#f92672">=</span> inout[cascadeIndex].viewProj <span style="color:#f92672">*</span> shadowOrigin;
+</span></span><span style="display:flex;"><span>shadowOrigin <span style="color:#f92672">=</span> shadowOrigin <span style="color:#f92672">*</span> ((<span style="color:#66d9ef">float</span>)cVarSingleShadowMapSize.Get() <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.5f</span>);
+</span></span><span style="display:flex;"><span>vec4 roundOrign <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>round(shadowOrigin);
+</span></span><span style="display:flex;"><span>vec4 roundOffset <span style="color:#f92672">=</span> roundOrign <span style="color:#f92672">-</span> shadowOrigin;
+</span></span><span style="display:flex;"><span>roundOffset <span style="color:#f92672">=</span> roundOffset <span style="color:#f92672">*</span> <span style="color:#ae81ff">2.0f</span> <span style="color:#f92672">/</span> (<span style="color:#66d9ef">float</span>)cVarSingleShadowMapSize.Get();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 添加texel align round offset.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>lightOrthoMatrix[<span style="color:#ae81ff">3</span>][<span style="color:#ae81ff">0</span>] <span style="color:#f92672">=</span> lightOrthoMatrix[<span style="color:#ae81ff">3</span>][<span style="color:#ae81ff">0</span>] <span style="color:#f92672">+</span> roundOffset.x;
+</span></span><span style="display:flex;"><span>lightOrthoMatrix[<span style="color:#ae81ff">3</span>][<span style="color:#ae81ff">1</span>] <span style="color:#f92672">=</span> lightOrthoMatrix[<span style="color:#ae81ff">3</span>][<span style="color:#ae81ff">1</span>] <span style="color:#f92672">+</span> roundOffset.y;
+</span></span><span style="display:flex;"><span>inout[cascadeIndex].viewProj <span style="color:#f92672">=</span> lightOrthoMatrix <span style="color:#f92672">*</span> lightViewMatrix;
+</span></span></code></pre></div><h3 id="问题二depth-clip">问题二：Depth Clip</h3>
+<p>如何选择每个Cascade的Near Z和Far Z ?</p>
+<p>如果单纯的使用Cascade Bounds的MinZ和MaxZ来计算Cascade的Near Z和Far Z，极易形成顶部物体消失的情况，表现在画面中就是屋顶不再投影：</p>
+<p><img src="/images/VulkanCascadeShadowMap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88.assets/image-20210712155912638.png" alt="Image"></p>
+<p>如上图所示，Cascade 4 中所有的物体均投影了，而Cascade 3 、 Cascade 1 、Cascade 0屋顶不再投影，导致出现室内阴影镂空。</p>
+<p><img src="/images/VulkanCascadeShadowMap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88.assets/image-20210712160310003.png" alt="Image"></p>
+<p>解决方案是遍历场景中所有的投影体，计算其最大FarZ并作为投影计算的FarZ：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// 与场景中所有的相交投影体计算最大的z分量
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> meshDC <span style="color:#f92672">=</span> inScene<span style="color:#f92672">-&gt;</span>GetMeshpassDrawCalls().GetMeshDC();
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> staticDC : meshDC.staticDrawCall)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> modelMat <span style="color:#f92672">=</span> staticDC<span style="color:#f92672">-&gt;</span>model2WorldMatrix;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> meshRenderBounds <span style="color:#f92672">=</span> staticDC<span style="color:#f92672">-&gt;</span>meshReference<span style="color:#f92672">-&gt;</span>renderBounds;
+</span></span><span style="display:flex;"><span>    vec3 meshBoundsCenter <span style="color:#f92672">=</span> meshRenderBounds.origin;
+</span></span><span style="display:flex;"><span>    vec3 meshCenterLightSpace <span style="color:#f92672">=</span> lightViewMatrix <span style="color:#f92672">*</span> modelMat <span style="color:#f92672">*</span> glm<span style="color:#f92672">::</span>vec4(meshBoundsCenter,<span style="color:#ae81ff">1.0f</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(meshCenterLightSpace.x <span style="color:#f92672">+</span> meshRenderBounds.radius <span style="color:#f92672">&gt;=</span> minExtents.x <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>       meshCenterLightSpace.x <span style="color:#f92672">-</span> meshRenderBounds.radius <span style="color:#f92672">&lt;=</span> maxExtents.x <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>       meshCenterLightSpace.y <span style="color:#f92672">+</span> meshRenderBounds.radius <span style="color:#f92672">&gt;=</span> minExtents.y <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>       meshCenterLightSpace.y <span style="color:#f92672">-</span> meshRenderBounds.radius <span style="color:#f92672">&lt;=</span> maxExtents.y <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>       meshCenterLightSpace.z <span style="color:#f92672">+</span> meshRenderBounds.radius <span style="color:#f92672">&gt;</span>  maxExtents.z)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> subMesh : staticDC<span style="color:#f92672">-&gt;</span>meshReference<span style="color:#f92672">-&gt;</span>subMeshes)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            vec3 subMeshBoundsCenter <span style="color:#f92672">=</span> subMesh.renderBounds.origin;
+</span></span><span style="display:flex;"><span>            vec3 subMeshCenterLightSpace <span style="color:#f92672">=</span> lightViewMatrix <span style="color:#f92672">*</span> modelMat <span style="color:#f92672">*</span> glm<span style="color:#f92672">::</span>vec4(subMeshBoundsCenter,<span style="color:#ae81ff">1.0f</span>);
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span>(subMeshCenterLightSpace.x <span style="color:#f92672">+</span> meshRenderBounds.radius <span style="color:#f92672">&gt;=</span> minExtents.x <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>               subMeshCenterLightSpace.x <span style="color:#f92672">-</span> meshRenderBounds.radius <span style="color:#f92672">&lt;=</span> maxExtents.x <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>               subMeshCenterLightSpace.y <span style="color:#f92672">+</span> meshRenderBounds.radius <span style="color:#f92672">&gt;=</span> minExtents.y <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>               subMeshCenterLightSpace.y <span style="color:#f92672">-</span> meshRenderBounds.radius <span style="color:#f92672">&lt;=</span> maxExtents.y <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>               subMeshCenterLightSpace.z <span style="color:#f92672">+</span> subMesh.renderBounds.radius <span style="color:#f92672">&gt;</span> maxExtents.z)
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                maxExtents.z <span style="color:#f92672">=</span> subMeshCenterLightSpace.z <span style="color:#f92672">+</span> subMesh.renderBounds.radius;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> dynamicDC : meshDC.staticDrawCall)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> modelMat <span style="color:#f92672">=</span> dynamicDC<span style="color:#f92672">-&gt;</span>model2WorldMatrix;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> meshRenderBounds <span style="color:#f92672">=</span> dynamicDC<span style="color:#f92672">-&gt;</span>meshReference<span style="color:#f92672">-&gt;</span>renderBounds;
+</span></span><span style="display:flex;"><span>    vec3 meshBoundsCenter <span style="color:#f92672">=</span> meshRenderBounds.origin;
+</span></span><span style="display:flex;"><span>    vec3 meshCenterLightSpace <span style="color:#f92672">=</span> lightViewMatrix <span style="color:#f92672">*</span> modelMat <span style="color:#f92672">*</span> glm<span style="color:#f92672">::</span>vec4(meshBoundsCenter,<span style="color:#ae81ff">1.0f</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(meshCenterLightSpace.x <span style="color:#f92672">+</span> meshRenderBounds.radius <span style="color:#f92672">&gt;=</span> minExtents.x <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>       meshCenterLightSpace.x <span style="color:#f92672">-</span> meshRenderBounds.radius <span style="color:#f92672">&lt;=</span> maxExtents.x <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>       meshCenterLightSpace.y <span style="color:#f92672">+</span> meshRenderBounds.radius <span style="color:#f92672">&gt;=</span> minExtents.y <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>       meshCenterLightSpace.y <span style="color:#f92672">-</span> meshRenderBounds.radius <span style="color:#f92672">&lt;=</span> maxExtents.y <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>       meshCenterLightSpace.z <span style="color:#f92672">+</span> meshRenderBounds.radius <span style="color:#f92672">&gt;</span> maxExtents.z)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> subMesh : dynamicDC<span style="color:#f92672">-&gt;</span>meshReference<span style="color:#f92672">-&gt;</span>subMeshes)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            vec3 subMeshBoundsCenter <span style="color:#f92672">=</span> subMesh.renderBounds.origin;
+</span></span><span style="display:flex;"><span>            vec3 subMeshCenterLightSpace <span style="color:#f92672">=</span> lightViewMatrix <span style="color:#f92672">*</span> modelMat <span style="color:#f92672">*</span> glm<span style="color:#f92672">::</span>vec4(subMeshBoundsCenter,<span style="color:#ae81ff">1.0f</span>);
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span>(subMeshCenterLightSpace.x <span style="color:#f92672">+</span> meshRenderBounds.radius <span style="color:#f92672">&gt;=</span> minExtents.x <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>               subMeshCenterLightSpace.x <span style="color:#f92672">-</span> meshRenderBounds.radius <span style="color:#f92672">&lt;=</span> maxExtents.x <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>               subMeshCenterLightSpace.y <span style="color:#f92672">+</span> meshRenderBounds.radius <span style="color:#f92672">&gt;=</span> minExtents.y <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>               subMeshCenterLightSpace.y <span style="color:#f92672">-</span> meshRenderBounds.radius <span style="color:#f92672">&lt;=</span> maxExtents.y <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>               subMeshCenterLightSpace.z <span style="color:#f92672">+</span> subMesh.renderBounds.radius <span style="color:#f92672">&gt;</span> maxExtents.z)
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                maxExtents.z <span style="color:#f92672">=</span> subMeshCenterLightSpace.z <span style="color:#f92672">+</span> subMesh.renderBounds.radius;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>lightViewMatrix <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>lookAt(
+</span></span><span style="display:flex;"><span>    intervalCenter <span style="color:#f92672">-</span> lightDir <span style="color:#f92672">*</span> maxExtents.z,
+</span></span><span style="display:flex;"><span>    intervalCenter,
+</span></span><span style="display:flex;"><span>    glm<span style="color:#f92672">::</span>vec3(<span style="color:#ae81ff">0.0f</span>,<span style="color:#ae81ff">1.0f</span>,<span style="color:#ae81ff">0.0f</span>)
+</span></span><span style="display:flex;"><span>); 
+</span></span></code></pre></div><p>这种解决方案并不好，虽然完美解决了Depth Clip的问题，但每帧的一次遍历代价过高，并且虽然我已经做了一次Bounds Clip，但是计算出来的MaxZ还是过大，会导致ShadowMap的深度精度下降：</p>
+<p>可以使用硬件特性depthClampEnable，也就是创建Vulkan pipeline时，将rasterizer.depthClampEnable设为True:</p>
+<p>这样，会把近、远平面的物体深度渲染为 0 或 1，而不是丢弃它们的深度，这样就可以保留下高度了。</p>
+<p>该特性需要硬件支持，可以通过VkPhysicalDeviceFeatures.depthClamp来获取是否支持。</p>
+<h3 id="问题三shadow-acne">问题三：Shadow Acne</h3>
+<p>级联ShadowMap如果开启硬件 Depth Bias，会导致渲染出来的不同级Cascade Depth Bias差距过大，体现在画面中，就是Cascade 接缝非常的明显：</p>
+<p><img src="/images/VulkanCascadeShadowMap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88.assets/image-20210712170631828.png" alt="Image"></p>
+<p>如上图所示。两级Cascade相交处硬件DepthBias计算出来的差距过大，形成了明显的交接缝隙。</p>
+<p>关闭掉硬件Depth Bias后，基本看不出两者的交接缝隙：</p>
+<p><img src="/images/VulkanCascadeShadowMap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88.assets/image-20210712170832115.png" alt="Image"></p>
+<p>因此我们需要在Shader中手动计算Depth Bias了。</p>
+<p>Learn OpenGL中有一个根据场景法线和光线方向的夹角来计算 Depth Bias 的算法：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> bias <span style="color:#f92672">=</span> max(<span style="color:#ae81ff">0.05</span> <span style="color:#f92672">*</span> (<span style="color:#ae81ff">1.0</span> <span style="color:#f92672">-</span> dot(normal, lightDir)), <span style="color:#ae81ff">0.005</span>);
+</span></span></code></pre></div><p>这在延迟渲染管线中需要根据WorldPosition或SceneDepth等几何信息重建场景法线，否则直接用GBuffer中的世界空间法线极易导致法线纹理中的凹凸信息影响该算法的计算：</p>
+<p><img src="/images/VulkanCascadeShadowMap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88.assets/image-20210712171454669.png" alt="Image"></p>
+<p>Unity和UE4中的解决思路都是计算 ShadowCoords的偏导，并用叉积近似计算受Slope影响的Bias因子：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// NOTE: In my test, this method on deffered rendering it&#39;s derivatives compute result is error and cause a lot of artifacts.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// AMD jacobian chain rule to compute shadow map receover plane depth bias.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>vec3 <span style="color:#a6e22e">AMDGetReceiverPlaneDepthBias</span>(vec3 inProjCoords,vec2 inShadowMapTexelSize)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Packing derivatives of u,v, and distance to light source w.r.t. screen space x, and y
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    vec3 duvdist_dx <span style="color:#f92672">=</span> dFdx(inProjCoords);
+</span></span><span style="display:flex;"><span>    vec3 duvdist_dy <span style="color:#f92672">=</span> dFdy(inProjCoords);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Invert texture Jacobian and use chain rule to compute ddist/du and ddist/dv
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">//  |ddist/du| = |du/dx  du/dy|-T  * |ddist/dx|
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">//  |ddist/dv|   |dv/dx  dv/dy|      |ddist/dy|
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Multiply ddist/dx and ddist/dy by inverse transpose of Jacobian
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">float</span> invDet <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span> <span style="color:#f92672">/</span> ((duvdist_dx.x <span style="color:#f92672">*</span> duvdist_dy.y) <span style="color:#f92672">-</span> (duvdist_dx.y <span style="color:#f92672">*</span> duvdist_dy.x));
+</span></span><span style="display:flex;"><span>    vec3 ddist_duv;
+</span></span><span style="display:flex;"><span> 
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Top row of 2x2
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    ddist_duv.x  <span style="color:#f92672">=</span> duvdist_dy.y  <span style="color:#f92672">*</span> duvdist_dx.z; <span style="color:#75715e">// invJtrans[0][0] * ddist_dx
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    ddist_duv.x <span style="color:#f92672">-=</span> duvdist_dx.y  <span style="color:#f92672">*</span> duvdist_dy.z; <span style="color:#75715e">// invJtrans[0][1] * ddist_dy
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Bottom row of 2x2
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    ddist_duv.y  <span style="color:#f92672">=</span> duvdist_dx.x  <span style="color:#f92672">*</span> duvdist_dy.z; <span style="color:#75715e">// invJtrans[1][1] * ddist_dy
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    ddist_duv.y <span style="color:#f92672">-=</span> duvdist_dy.x  <span style="color:#f92672">*</span> duvdist_dx.z; <span style="color:#75715e">// invJtrans[1][0] * ddist_dx
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    ddist_duv.xy <span style="color:#f92672">*=</span> invDet;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> minFractionalError <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.01f</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> fractionalSamplingError <span style="color:#f92672">=</span> dot(inShadowMapTexelSize, abs(ddist_duv.xy));
+</span></span><span style="display:flex;"><span>    ddist_duv.z <span style="color:#f92672">=</span> <span style="color:#f92672">-</span>min(fractionalSamplingError, minFractionalError);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> ddist_duv;
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// usage:
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// float bias = dot( uvBias,ddist_duv.xy ) + sceneDepth;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// Unreal depth bias dot factors.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>vec2 <span style="color:#a6e22e">UnrealDepthBiasDotFactors</span>(vec3 inProjCoords)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    vec3 dx <span style="color:#f92672">=</span> dFdx(inProjCoords);
+</span></span><span style="display:flex;"><span>    vec3 dy <span style="color:#f92672">=</span> dFdy(inProjCoords);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    vec3 depthBiasPlaneNormal <span style="color:#f92672">=</span> cross(dx, dy);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> depthBiasFactor <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span> <span style="color:#f92672">/</span> max(abs(depthBiasPlaneNormal.z), length(depthBiasPlaneNormal) <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.0872665</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    vec2 depthBiasDotFactors <span style="color:#f92672">=</span> depthBiasPlaneNormal.xy <span style="color:#f92672">*</span> depthBiasFactor;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> depthBiasDotFactors;
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// usage:
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// float SampleDepthBias = max(dot(depthBiasDotFactors, SampleUVOffset), 0);
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
+</span></span></code></pre></div>
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+        <a href="/tags/flower">Flower</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/">VkWriteDescriptorSet内存堆释放问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/">大型场景下的Vulkan CascadeShadowMap功能开发</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/">Vulkan中的实时软阴影与硬件优化</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/">Vulkan利用SpirV-Cross提取Shader反射信息来自动构建MeshDrawCommand</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/">UE4移动端中的两种Resolve</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

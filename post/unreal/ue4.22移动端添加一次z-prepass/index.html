@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 虚幻引擎4.22手机添加一次Z-PrePass | 月光下的旅行。 </title>
+  <meta name="description" content="UE4.22移动端添加一次Z-PrePass">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B7%BB%E5%8A%A0%E4%B8%80%E6%AC%A1z-prepass/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >虚幻引擎4.22手机添加一次Z-PrePass</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2020-10-21T00:00:00Z">October 21, 2020</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/unreal">Unreal</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>得益于UE4 MeshDrawCommand架构的优良设计，为引擎渲染管线添加一个Pass变得非常的简单。在看完虚幻官方给出的文档后，我开始修改Mobile的渲染管线，原本以为需要自己定义一套Mesh Collector流程，自己写一遍shader binding，却发现引擎的Defferd管线的PrePass非常适合做这个，这节省了我大量的时间，我只需要额外注册一个Mobile的 PrePass就可以在BuildMeshDrawCommand中收集PrePass需要的一切信息，在MobileShadingRender中在MobileBasePass之前插入一次，一切都搞定了，最后再针对美术的使用体验修改一下编辑器界面，就完事了，非常的简单粗暴。</p>
+<p>实际上为Mobile添加一个PrePass一个下午就弄完了，接下来的一个星期时间都是在打包测试，放在RenderDoc中测了一下，DrawCall多了近50%，但时间却整体减少了 5 - 6 ms。在材质复杂程度更高时，优化会更加明显。</p>
+<p>另外，PrePass的Early-Z优化在低端机上更加明显，低端机的View Distance比较近，小件物体没有渲染，额外的drawcall数并不多，提升能达到惊人的10-12ms(也许是我们之前的优化做得太渣了)。</p>
+<p>开启了PrePass后，注意Z Func的切换，Base Pass使用 Z-Equal能节省近15%的时间，原因在于 Z-Equal开启时，Mask材质在片元着色器之前的深度测试中直接可以测试了，无须采样Mask贴图来确定哪一部分为镂空。</p>
+<p>PrePass 在低端机的Z-Test可能会出现精度问题：Pre-Z存下的深度精度（虽然是FP-16但感觉并不是真正的16bit）比不上管线中使用的精度，Mask材质如草、树叶出现黑色闪烁，目前还没有比较好的解决办法，我暂时把它给屏蔽了。</p>
+<p>最后，主动给角色、大地形的Material Blend Mode切换为Mask，可以让它们参与到 Mask Only PrePass的流程中，最大程度减少DrawCall同时减少Overdraw。</p>
+<p>注：我发现UE4.25已经看到PrePass添加到移动管线上去了，不过它是 Mask Only的，并且目前这个特性并没有放出来。在未来的版本可能会有吧。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/unreal">Unreal</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E7%BA%A7%E8%81%94%E9%98%B4%E5%BD%B1shadowmap%E4%BD%BF%E7%94%A8%E7%8E%87%E8%BF%87%E4%BD%8E%E9%97%AE%E9%A2%98%E4%BF%AE%E5%A4%8D/">虚幻4移动端级联阴影ShadowMap使用率过低问题修复</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/substance-painter%E4%B8%8Eue4%E9%85%8D%E5%A5%97shader/">Substance Painter Shader与UE4移动端渲染效果同步</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/">UE4.26 移动端手机Tiled Resolve性能记录</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%9D%E7%BB%B8%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9/">各向异性材质渲染与美术流程注意事项</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0/">简单翻页效果</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

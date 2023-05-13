@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> UE4.26 ILC加载与渲染 | 月光下的旅行。 </title>
+  <meta name="description" content="UE4.26 ILC加载与渲染">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/unreal/ue4.26-ilc%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E4%B8%8E%E6%B8%B2%E6%9F%93/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >UE4.26 ILC加载与渲染</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-06-10T00:00:00Z">June 10, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/unreal">Unreal</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>建议放大120%观看。这篇博文主要是UE4 ILC的工程逻辑分析，主要帮助想要改ILC（TOD）的人快速了解整个流程，不太涉及到数学相关知识。
+该篇博文包括：</p>
+<ol>
+<li>Level加载ILC到渲染线程的逻辑分析。</li>
+<li>渲染线程更新ILC数据的分析。</li>
+<li>GPU、CPU的SH数据通信分析。</li>
+</ol>
+<p>ILC是UE4动态物体预烘焙全局光照的一种解决办法，原理简单来说就是在烘焙场景光照时，按照特定规则在场景中摆放一些静态Box，然后光子评估时记录每个Box的受光信息，这些受光信息通过低阶球谐函数编码在MapBuildData中，渲染时，在CPU端根据世界空间坐标，在一个Bounds范围内逐Box插值，并将插值后的值传入GPU中，在Shader中逐像素解码球谐光并添加到间接光照中去。</p>
+<p><img src="/images/UEILC/image-20210610153341831.png" alt="Image"></p>
+<p>总结的数据与逻辑关系：</p>
+<p><img src="/images/UEILC/a.png" alt="Image"></p>
+<p>UE4 灯光数据发生变化时（烘焙Lightmap、更改LightScenario等），将会触发UWorld::PropagateLightingScenarioChange()。</p>
+<p><img src="/images/UEILC/image-20210610154141423.png" alt="Image"></p>
+<p>在该函数中，将会调用ULevel::InitializeRenderingResources()，重新初始化当前UWorld中每个已加载的子关卡（存放在UWorld::Levels数组中）的烘焙光照数据。</p>
+<p><img src="/images/UEILC/image-20210610154417991.png" alt="Image"></p>
+<p>每个ULevel都持有一份FPrecomputedLightVolume数据，里面存储了ILC数据。</p>
+<p>红框部分调用FPrecomputedLightVolume::AddToScene函数将PrecomputedLightVolume数据压入渲染线程：</p>
+<p><img src="/images/UEILC/image-20210610154825007.png" alt="Image"></p>
+<p>该函数通过GetLevelPrecomputedLightVolumeBuildData(LevelBuildDataId)获取对应Level的ILC数据，接着通过宏ENQUEUE_RENDER_COMMAND做好数据的Binding，最后调用FScene::AddPrecomputedLightVolume注册到渲染场景中。</p>
+<p><img src="/images/UEILC/image-20210610161359575.png" alt="Image"></p>
+<p>FScene中使用PrecomputedLightVolumes一维指针数组简单存储每个Level中的ILC数据(它将会在后面的采样插值时用到)，并且使用类FIndirectLightingCache来处理ILC的更新、插值等计算。</p>
+<p>在函数FIndirectLightingCache::SetLightingCacheDirty中，遍历判断当前FScene中存储的每个几何体是否和压入的Level Precomputed LightVolume（ILC Bounds）相交，然后分别做好脏标记。</p>
+<p><img src="/images/UEILC/image-20210610161943038.png" alt="Image"></p>
+<p>此时，从游戏线程压入ILC数据的逻辑处理已完成，接下来是渲染线程的更新。</p>
+<p>UE4为多个平台都分别写了一个渲染器，移动端渲染器入口函数为FMobileSceneRenderer::Render，每帧调用。</p>
+<p><img src="/images/UEILC/image-20210610162217574.png" alt="Image"></p>
+<p>渲染函数一开始，将会进入InitViews函数，在该函数中处理几何体可见性剔除和ubo更新等。</p>
+<p><img src="/images/UEILC/image-20210610162339825.png" alt="Image"></p>
+<p>InitViews函数在可见性剔除计算完后立即进入PostVisibilityFrameSetup函数中：</p>
+<p><img src="/images/UEILC/image-20210610162448626.png" alt="Image"></p>
+<p>在PostVisibilityFrameSetup中将会启用FIndirectLightingCache的StartUpdateCachePrimitivesTask填充任务：</p>
+<p><img src="/images/UEILC/image-20210610162556310.png" alt="Image"></p>
+<p>FUpdateCachePrimitivesTask为FIndirectLightingCache的TaskGraph代理类，在其DoTask函数中将调用对应的Update函数，更新所有受ILC影响的Primitive：</p>
+<p><img src="/images/UEILC/image-20210610163004734.png" alt="Image"></p>
+<p><img src="/images/UEILC/image-20210610163109393.png" alt="Image"></p>
+<p>函数UpdateCachePrimitivesInternal有一些简单的逻辑判断，但最终还是会进入FIndirectLightingCache::UpdateCachePrimitive，根据先前已经设置的ILC脏标记bIsDirty调用FIndirectLightingCache::UpdateCacheAllocation，来更新FScene中每个脏掉的Primitive的ILC。</p>
+<p><img src="/images/UEILC/image-20210610163343791.png" alt="Image"></p>
+<p>UpdateCacheAllocation主要用于更新VolumeBlocks中的数据，它的主要逻辑如下：</p>
+<p><img src="/images/UEILC/image-20210610164935541.png" alt="Image"></p>
+<p>ILC默认为SH点采样，首先通过FindBlock查找当前Primitive对应的ILC Block：</p>
+<p><img src="/images/UEILC/image-20210610170556390.png" alt="Image"></p>
+<p>先介绍VolumeBlocks是如何填充的：</p>
+<p>为游戏场景添加几何体时，将会触发FPrimitiveSceneInfo::AddToScene函数。</p>
+<p>如果是首次添加，还会触发FIndirectLightingCache::AllocatePrimitive函数：</p>
+<p><img src="/images/UEILC/image-20210610170855649.png" alt="Image"></p>
+<p>AllocatePrimitive函数将会调用CreateAllocation初始化ILC Block：</p>
+<p><img src="/images/UEILC/image-20210610171144901.png" alt="Image"></p>
+<p>FIndirectLightingCacheBlock为简单的数据存储类。</p>
+<p><img src="/images/UEILC/image-20210610172402926.png" alt="Image"></p>
+<p>TexelSize记录了采样盒体的大小：</p>
+<p><img src="/images/UEILC/image-20210610173301229.png" alt="Image"></p>
+<p>接下来利用CalculateBlockPositionAndSize函数计算ILC计算所使用的BoundBox大小。</p>
+<p><img src="/images/UEILC/image-20210610174951317.png" alt="Image"></p>
+<p>然后稍微缩放一下Bounds：</p>
+<p><img src="/images/UEILC/image-20210610175357167.png" alt="Image"></p>
+<p>注意这里会根据原有的Primitive Bounds做一些阶梯函数式的缩放，确保物体的包围盒改变不大时保持ILC结果相对稳定，减少高频移动物体的ILC闪烁。</p>
+<p><img src="/images/UEILC/image-20210610175432612.png" alt="Image"></p>
+<p>此时，VolumeBlocks填充完毕。</p>
+<p>回到UpdateCacheAllocation，找到当前PrimitiveAllocation对应的 ILC Block后，同样先更新一下ILC Block Bounds，然后填入BlocksToUpdate和TransitionsOverTimeToUpdate中。</p>
+<p><img src="/images/UEILC/image-20210610175728549.png" alt="Image"></p>
+<p><img src="/images/UEILC/image-20210610175746344.png" alt="Image"></p>
+<p>FBlockUpdateInfo就一个暂存数据的结构体，里面的Allocation指针指向每个PrimitiveAllocation的FIndirectLightingCacheAllocation。</p>
+<p>BlocksToUpdate和TransitionsOverTimeToUpdate将通过引用填入到InitViews函数的ILCTaskData中：</p>
+<p><img src="/images/UEILC/image-20210610180705706.png" alt="Image"></p>
+<p>在InitViews一大堆RenderPass Setup设置计算完成后，再用ILCTaskData来一次FinalizeCacheUpdates保证所有ILC计算完毕，同时尽可能多利用多线程的计算优势。</p>
+<p><img src="/images/UEILC/image-20210610180755659.png" alt="Image"></p>
+<p>在该函数中Flush ILC的计算任务如下，可以看到先前填充的ILCTaskData将会在这里用于SH的插值计算：</p>
+<p><img src="/images/UEILC/image-20210610181031343.png" alt="Image"></p>
+<p><img src="/images/UEILC/image-20210610181058308.png" alt="Image"></p>
+<p>计算主要逻辑位于UpdateBlocks中：</p>
+<p><img src="/images/UEILC/image-20210610181307745.png" alt="Image"></p>
+<p><img src="/images/UEILC/image-20210610181337423.png" alt="Image"></p>
+<p>VLM和ILC的插值都混杂在这里，重点观察InterpolatePoint函数：</p>
+<p><img src="/images/UEILC/image-20210610205302194.png" alt="Image"></p>
+<p>先前在GameThread填入的PrecomputedLightVolumes在这里派上了用场。</p>
+<p><img src="/images/UEILC/image-20210610205431916.png" alt="Image"></p>
+<p>在FPrecomputedLightVolume::InterpolateIncidentRadiancePoint函数中，利用已建好的渲染场景八叉树结构加速空间相交查询，然后根据两点之间的间距插值。</p>
+<p>408到410行：ILC采样点在生成时，都会有一个采样半径（权重），该采样半径（权重）将会在这里参与插值计算。</p>
+<p>414行：应该是4.26.2的新优化，为ILC采样加入了SkyBentNormal的影响，这样理论上可以减少漏光，但我测试好像没啥卵用。</p>
+<p>球谐光插值需要注意的细节之一就是减低振铃现象。</p>
+<p>这里有个很不错的相关论文（其实是）：</p>
+<p><a href="https://www.ppsloan.org/publications/shdering.pdf">Deringing Spherical Harmonics - Peter-Pike Sloan</a></p>
+<p>UE4的做法很独特：</p>
+<p><img src="/images/UEILC/image-20210610181746075.png" alt="Image"></p>
+<p><img src="/images/UEILC/image-20210610181838993.png" alt="Image"></p>
+<p>注意第959行的注释。</p>
+<p>至此，CPU端的ILC插值计算完毕。</p>
+<p>GPU SH参数的GPU更新部分：</p>
+<p>在MobileRenderer正式渲染开始前，先调用UpdatePrimitiveIndirectLightingCacheBuffers函数更新ILC数据：</p>
+<p><img src="/images/UEILC/image-20210610182518825.png" alt="Image"></p>
+<p>在该函数中，逐物体调用UpdateIndirectLightingCacheBuffer函数：</p>
+<p><img src="/images/UEILC/image-20210610182629580.png" alt="Image"></p>
+<p>最终会调用到GetIndirectLightingCacheParameters函数：</p>
+<p>这里的LightingAllocation指针和上文提到的填充到FBlockUpdateInfo中的Allocation指针的地址相同，它的数据已经在对应的Task中插值更新完了。</p>
+<p><img src="/images/UEILC/image-20210610182756768.png" alt="Image"></p>
+<p>如果开启了ILC就填入对应的数据。</p>
+<p>接下来调用RHI函数将数据更新到GPU：</p>
+<p><img src="/images/UEILC/image-20210610182903000.png" alt="Image"></p>
+<p><img src="/images/UEILC/image-20210610182912566.png" alt="Image"></p>
+<p>FIndirectLightingCacheUniformParameters结构和GPU保持一致的声明：</p>
+<p><img src="/images/UEILC/image-20210610183118568.png" alt="Image"></p>
+<p>Shader部分，直接使用解码SH即可：</p>
+<p><img src="/images/UEILC/image-20210610183435435.png" alt="Image"></p>
+<p>最后。</p>
+<h2 id="友情tip">友情Tip</h2>
+<p>如果你正在为UE4开发两套ILC Lerp融合的Time Of Day方案，同情&hellip;&hellip;技术上确实可行，但是根本没有落实到项目中的可能性，首先看看上方的流程就知道ILC的更新逻辑有多复杂，并且UE4根本没打算支持两套的插值，所以整套逻辑都是线性的，不好扩展，当你千辛万苦的加入另一套PreComputeLightingVolume的插值，你会发现，Cpu的运算压力和机器内存压力都会急剧上升，移动端性能本来就吃紧，这做法完全没有必要，项目评估时就会毙掉，然后你的杰作就放在那里吃尘了。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/unreal">Unreal</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/">UE4.26 Lightmap从烘焙到渲染</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/ue4%E5%8D%A1%E9%80%9A%E6%B8%B2%E6%9F%93%E5%B0%9D%E8%AF%95/">UE4卡通渲染尝试</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E9%99%8D%E5%88%86%E8%BE%A8%E7%8E%87%E7%A6%BB%E5%B1%8F%E5%8D%8A%E9%80%8F%E6%98%8E%E6%B8%B2%E6%9F%93%E7%9A%84%E5%9D%91/">UE4.22移动端降分辨率离屏半透明渲染的坑</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22-%E9%92%88%E5%AF%B9%E6%8D%8F%E8%84%B8%E7%9A%84shadowmap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92%E7%AE%97%E6%B3%95%E5%86%8D%E6%94%B9%E8%BF%9B/">虚幻4捏脸的ShadowMap投影包围盒算法再改进</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E5%AE%9E%E7%8E%B0grabpass%E6%8A%93%E5%B1%8F/">虚幻4.22移动端实现GrabPass抓屏</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

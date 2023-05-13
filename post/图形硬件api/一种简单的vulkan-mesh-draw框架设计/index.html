@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> Vulkan利用SpirV-Cross提取Shader反射信息来自动构建MeshDrawCommand | 月光下的旅行。 </title>
+  <meta name="description" content="一种简单的Vulkan Mesh Draw框架设计">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >Vulkan利用SpirV-Cross提取Shader反射信息来自动构建MeshDrawCommand</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-04-14T00:00:00Z">April 14, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+      <a href="/categories/flower">Flower</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p><img src="/images/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84VulkanMeshDraw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/1.jpg" alt="Image"></p>
+<p>Vulkan准备一次MeshDrawCommand非常麻烦，要写很多代码，这时候一种可自适应性的、自动填充pipeline和vao的Mesh Draw框架就很有必要了。</p>
+<p>Mesh Draw Command的生成有两种方向，一种是C++端硬编码设计好渲染管线，然后再依据C++的输入内容编写Shader；第二种是先写好Shader，然后再在C++端根据Shader信息生成对应的Descriptor、Pipeline等信息。</p>
+<p>UE4是第一种做法，所以写起自定义Shader很痛苦，Unity、bgfx则是后者，并且它们都自己设计了一套Shader语法，增加了Shader语言的表达能力，非常的Nice。</p>
+<p>目前我是用GLSL编译到SPV的方式加载Shader，并没有自己实现了一套语法解析器，但可以利用SpirV-Cross库提取Spv中的反射信息，在C++端再自动动态生成Descriptors，减轻Mesh Draw Command的生成压力。</p>
+<p>SpirV-Cross虽然随Vulkan SDK附带了Lib，但基本都不会用SDK里的，因为经常会因为链接时Lib版本信息对不上导致链接失败。</p>
+<p>正确的做法是在Github上下载最新的SpirV-Cross库，编译对应的Debug Lib和Release Lib，然后再放入自己的Vulkan工程中。</p>
+<p><img src="/images/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84VulkanMeshDraw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/image-20210425202927297.png" alt="Image"></p>
+<p>这个库使用起来非常的简单，我们只需准备好编译后的shader code （uin8_t或者char），就可以构建一个SpirV-Cross的compiler,然后很简单就可以得到shader resources了：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">#pragma warning(push)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#pragma warning(disable:4099)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;spirv_cross/spirv_cross.hpp&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#pragma warning(pop)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>spirv_cross<span style="color:#f92672">::</span>Compiler compiler((<span style="color:#66d9ef">uint32_t</span><span style="color:#f92672">*</span>)shader_module<span style="color:#f92672">-&gt;</span>shader_code.data(),shader_module<span style="color:#f92672">-&gt;</span>shader_code.size()<span style="color:#f92672">/</span><span style="color:#66d9ef">sizeof</span>(<span style="color:#66d9ef">uint32_t</span>));
+</span></span><span style="display:flex;"><span>spirv_cross<span style="color:#f92672">::</span>ShaderResources resources <span style="color:#f92672">=</span> compiler.get_shader_resources();
+</span></span></code></pre></div><p>ShaderResources结构存储了shader引用的所有资源，具体结构如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">ShaderResources</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> uniform_buffers;
+</span></span><span style="display:flex;"><span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> storage_buffers;
+</span></span><span style="display:flex;"><span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> stage_inputs;
+</span></span><span style="display:flex;"><span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> stage_outputs;
+</span></span><span style="display:flex;"><span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> subpass_inputs;
+</span></span><span style="display:flex;"><span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> storage_images;
+</span></span><span style="display:flex;"><span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> sampled_images;
+</span></span><span style="display:flex;"><span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> atomic_counters;
+</span></span><span style="display:flex;"><span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> acceleration_structures;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// There can only be one push constant block,
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#75715e">// but keep the vector in case this restriction is lifted in the future.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> push_constant_buffers;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// For Vulkan GLSL and HLSL source,
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#75715e">// these correspond to separate texture2D and samplers respectively.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> separate_images;
+</span></span><span style="display:flex;"><span>	SmallVector<span style="color:#f92672">&lt;</span>Resource<span style="color:#f92672">&gt;</span> separate_samplers;
+</span></span><span style="display:flex;"><span>};
+</span></span></code></pre></div><p>我们要做的，就是遍历ShaderResources结构里的每种GPU Resource，非常简单就可得到对应的VkDescriptorSetLayoutBinding，并用自定义容器将它们存起来：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">int32_t</span> i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i<span style="color:#f92672">&lt;</span>resources.uniform_buffers.size(); <span style="color:#f92672">++</span>i)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	spirv_cross<span style="color:#f92672">::</span>Resource<span style="color:#f92672">&amp;</span> res <span style="color:#f92672">=</span> resources.uniform_buffers[i];
+</span></span><span style="display:flex;"><span>	spirv_cross<span style="color:#f92672">::</span>SPIRType type <span style="color:#f92672">=</span> compiler.get_type(res.type_id);
+</span></span><span style="display:flex;"><span>	spirv_cross<span style="color:#f92672">::</span>SPIRType base_type <span style="color:#f92672">=</span> compiler.get_type(res.base_type_id);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>string<span style="color:#f92672">&amp;</span> varName <span style="color:#f92672">=</span> compiler.get_name(res.id);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>string<span style="color:#f92672">&amp;</span> typeName <span style="color:#f92672">=</span> compiler.get_name(res.base_type_id);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">uint32_t</span> uniformBufferStructSize <span style="color:#f92672">=</span> (<span style="color:#66d9ef">uint32_t</span>)compiler.get_declared_struct_size(type);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">int32_t</span> set <span style="color:#f92672">=</span> compiler.get_decoration(res.id,spv<span style="color:#f92672">::</span>DecorationDescriptorSet);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">int32_t</span> binding <span style="color:#f92672">=</span> compiler.get_decoration(res.id,spv<span style="color:#f92672">::</span>DecorationBinding);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	VkDescriptorSetLayoutBinding setLayoutBinding <span style="color:#f92672">=</span> {};
+</span></span><span style="display:flex;"><span>	setLayoutBinding.binding <span style="color:#f92672">=</span> binding;
+</span></span><span style="display:flex;"><span>	setLayoutBinding.descriptorType <span style="color:#f92672">=</span> VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+</span></span><span style="display:flex;"><span>	setLayoutBinding.descriptorCount <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>	setLayoutBinding.stageFlags <span style="color:#f92672">=</span> stageFlags;
+</span></span><span style="display:flex;"><span>	setLayoutBinding.pImmutableSamplers <span style="color:#f92672">=</span> <span style="color:#66d9ef">nullptr</span>;
+</span></span><span style="display:flex;"><span>	set_layouts_info.add_descriptor_set_layout_binding(varName,set,setLayoutBinding);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">auto</span> it <span style="color:#f92672">=</span> buffer_params.find(varName);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span>(it<span style="color:#f92672">==</span>buffer_params.end())
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		buffer_info bufferInfo <span style="color:#f92672">=</span> {};
+</span></span><span style="display:flex;"><span>		bufferInfo.set <span style="color:#f92672">=</span> set;
+</span></span><span style="display:flex;"><span>		bufferInfo.binding <span style="color:#f92672">=</span> binding;
+</span></span><span style="display:flex;"><span>		bufferInfo.buffer_size <span style="color:#f92672">=</span> uniformBufferStructSize;
+</span></span><span style="display:flex;"><span>		bufferInfo.stage_flags <span style="color:#f92672">=</span> stageFlags;
+</span></span><span style="display:flex;"><span>		bufferInfo.descriptor_type <span style="color:#f92672">=</span> setLayoutBinding.descriptorType;
+</span></span><span style="display:flex;"><span>		buffer_params.insert(std<span style="color:#f92672">::</span>make_pair(varName,bufferInfo));
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">else</span>
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		it<span style="color:#f92672">-&gt;</span>second.stage_flags <span style="color:#f92672">|=</span> setLayoutBinding.stageFlags;
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">int32_t</span> i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> resources.subpass_inputs.size(); <span style="color:#f92672">++</span>i)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	spirv_cross<span style="color:#f92672">::</span>Resource<span style="color:#f92672">&amp;</span> res <span style="color:#f92672">=</span> resources.subpass_inputs[i];
+</span></span><span style="display:flex;"><span>	spirv_cross<span style="color:#f92672">::</span>SPIRType type <span style="color:#f92672">=</span> compiler.get_type(res.type_id);
+</span></span><span style="display:flex;"><span>	spirv_cross<span style="color:#f92672">::</span>SPIRType base_type <span style="color:#f92672">=</span> compiler.get_type(res.base_type_id);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>string<span style="color:#f92672">&amp;</span> varName <span style="color:#f92672">=</span> compiler.get_name(res.id);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">int32_t</span> set <span style="color:#f92672">=</span> compiler.get_decoration(res.id,spv<span style="color:#f92672">::</span>DecorationDescriptorSet);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">int32_t</span> binding <span style="color:#f92672">=</span> compiler.get_decoration(res.id,spv<span style="color:#f92672">::</span>DecorationBinding);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	VkDescriptorSetLayoutBinding setLayoutBinding <span style="color:#f92672">=</span> {};
+</span></span><span style="display:flex;"><span>	setLayoutBinding.binding <span style="color:#f92672">=</span> binding;
+</span></span><span style="display:flex;"><span>	setLayoutBinding.descriptorType <span style="color:#f92672">=</span> VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+</span></span><span style="display:flex;"><span>	setLayoutBinding.descriptorCount <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>	setLayoutBinding.stageFlags <span style="color:#f92672">=</span> stageFlags;
+</span></span><span style="display:flex;"><span>	setLayoutBinding.pImmutableSamplers <span style="color:#f92672">=</span> <span style="color:#66d9ef">nullptr</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	set_layouts_info.add_descriptor_set_layout_binding(varName,set,setLayoutBinding);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">auto</span> it <span style="color:#f92672">=</span> image_params.find(varName);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span>( it <span style="color:#f92672">==</span> image_params.end())
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		image_info imageInfo <span style="color:#f92672">=</span> {};
+</span></span><span style="display:flex;"><span>		imageInfo.set <span style="color:#f92672">=</span> set;
+</span></span><span style="display:flex;"><span>		imageInfo.binding <span style="color:#f92672">=</span> binding;
+</span></span><span style="display:flex;"><span>		imageInfo.stage_flags <span style="color:#f92672">=</span> stageFlags;
+</span></span><span style="display:flex;"><span>		imageInfo.descriptor_type <span style="color:#f92672">=</span> setLayoutBinding.descriptorType;
+</span></span><span style="display:flex;"><span>		image_params.insert(std<span style="color:#f92672">::</span>make_pair(varName,imageInfo));
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">else</span>
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		it<span style="color:#f92672">-&gt;</span>second.stage_flags <span style="color:#f92672">|=</span> stageFlags;
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">//... 其它同理
+</span></span></span></code></pre></div><p>然后是descriptor的申请，在shader的VkDescriptorSetLayoutBinding都准备好后，创建descriptor异常方便：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>vk_descriptor_set<span style="color:#f92672">&gt;</span> vk_shader_mix<span style="color:#f92672">::</span>create_descriptor_set()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span>(set_layouts_info.set_layouts.size() <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span> )
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span> <span style="color:#66d9ef">nullptr</span>;
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">auto</span> sets <span style="color:#f92672">=</span> std<span style="color:#f92672">::</span>make_shared<span style="color:#f92672">&lt;</span>vk_descriptor_set<span style="color:#f92672">&gt;</span>(device);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	sets<span style="color:#f92672">-&gt;</span>set_layouts_info <span style="color:#f92672">=</span> set_layouts_info;
+</span></span><span style="display:flex;"><span>	sets<span style="color:#f92672">-&gt;</span>descriptor_sets.resize(set_layouts_info.set_layouts.size());
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">int32_t</span> i <span style="color:#f92672">=</span> (<span style="color:#66d9ef">int32_t</span>)descriptor_set_pools.size() <span style="color:#f92672">-</span> <span style="color:#ae81ff">1</span>; i<span style="color:#f92672">&gt;=</span><span style="color:#ae81ff">0</span>; <span style="color:#f92672">--</span>i)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span>(descriptor_set_pools[i]<span style="color:#f92672">-&gt;</span>allocate_descriptor_set(sets<span style="color:#f92672">-&gt;</span>descriptor_sets.data()))
+</span></span><span style="display:flex;"><span>		{
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">return</span> sets;
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">auto</span> set_pool <span style="color:#f92672">=</span> std<span style="color:#f92672">::</span>make_shared<span style="color:#f92672">&lt;</span>vk_descriptor_set_pool<span style="color:#f92672">&gt;</span>(device,<span style="color:#ae81ff">64</span>,set_layouts_info,shader_descriptor_set_layouts);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	descriptor_set_pools.push_back(set_pool);
+</span></span><span style="display:flex;"><span>	set_pool<span style="color:#f92672">-&gt;</span>allocate_descriptor_set(sets<span style="color:#f92672">-&gt;</span>descriptor_sets.data());
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> sets;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>此时，与shader绑定的material只需设置好每一个descriptor_set即可。</p>
+<p>material是与mesh绑定的，而mesh是与vertex input attribute绑定的。</p>
+<p>首先是mesh的内存管理，专门使用一个全局的mesh_manager类来管理所有的网格加载：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">meshes_manager</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>	meshes_manager() { };
+</span></span><span style="display:flex;"><span>	<span style="color:#f92672">~</span>meshes_manager() { };
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">void</span> <span style="color:#a6e22e">initialize</span>(vk_device<span style="color:#f92672">*</span> indevice,VkCommandPool inpool);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// 释放加载到内存中的网格数据
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#66d9ef">void</span> <span style="color:#a6e22e">release_cpu_mesh_data</span>();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">void</span> <span style="color:#a6e22e">release</span>()
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		sponza_mesh.reset();
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>	std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>mesh<span style="color:#f92672">&gt;</span> sponza_mesh;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">private</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>	vk_device<span style="color:#f92672">*</span> device;
+</span></span><span style="display:flex;"><span>	VkCommandPool pool;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">extern</span> meshes_manager g_meshes_manager;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// cpp
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">void</span> meshes_manager<span style="color:#f92672">::</span>initialize(vk_device<span style="color:#f92672">*</span> indevice,VkCommandPool inpool)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	pool <span style="color:#f92672">=</span> inpool;
+</span></span><span style="display:flex;"><span>	device <span style="color:#f92672">=</span> indevice;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// sponza 网格加载到内存中
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	sponza_mesh <span style="color:#f92672">=</span> std<span style="color:#f92672">::</span>make_shared<span style="color:#f92672">&lt;</span>mesh<span style="color:#f92672">&gt;</span>(device,pool);
+</span></span><span style="display:flex;"><span>	sponza_mesh<span style="color:#f92672">-&gt;</span>load_obj_mesh(<span style="color:#e6db74">&#34;data/model/sponza/sponza.obj&#34;</span>,<span style="color:#e6db74">&#34;&#34;</span>);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 释放加载到cpu中的网格数据
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">void</span> meshes_manager<span style="color:#f92672">::</span>release_cpu_mesh_data()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	sponza_mesh<span style="color:#f92672">-&gt;</span>raw_data.release_cpu_data();
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>这里为了方便理解我硬编码了一个sponza_mesh变量，真正使用需要用vector配合scene actor的mesh component做到随意加载收集。</p>
+<p>mesh的使用分离renderpass与material的设计，尽可能保证两者解耦：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#75715e">// 按材质划分Mesh
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">mesh</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>	mesh(vk_device<span style="color:#f92672">*</span> indevice,
+</span></span><span style="display:flex;"><span>		VkCommandPool pool)<span style="color:#f92672">:</span> 
+</span></span><span style="display:flex;"><span>		device(indevice),
+</span></span><span style="display:flex;"><span>		pool(pool)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#f92672">~</span>mesh(){ }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	std<span style="color:#f92672">::</span>array<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>vk_vertex_buffer<span style="color:#f92672">&gt;</span>,renderpass_type<span style="color:#f92672">::</span>max_index<span style="color:#f92672">&gt;</span> vertex_bufs <span style="color:#f92672">=</span> { };
+</span></span><span style="display:flex;"><span>	std<span style="color:#f92672">::</span>array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">bool</span>,renderpass_type<span style="color:#f92672">::</span>max_index<span style="color:#f92672">&gt;</span> has_registered <span style="color:#f92672">=</span> { };
+</span></span><span style="display:flex;"><span>	std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>sub_mesh<span style="color:#f92672">&gt;</span> sub_meshes;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">void</span> <span style="color:#a6e22e">draw</span>(std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>vk_command_buffer<span style="color:#f92672">&gt;</span> cmd_buf,<span style="color:#66d9ef">int32_t</span> pass_type);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// 在此处存储的所有顶点
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	vertex_raw_data raw_data <span style="color:#f92672">=</span> {};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// 注册render pass 对应的 mesh
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#66d9ef">void</span> <span style="color:#a6e22e">register_renderpass</span>(
+</span></span><span style="display:flex;"><span>        std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>vk_renderpass<span style="color:#f92672">&gt;</span> pass,
+</span></span><span style="display:flex;"><span>        std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>vk_shader_mix<span style="color:#f92672">&gt;</span> shader,
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">bool</span> reload_vertex_buf <span style="color:#f92672">=</span> true
+</span></span><span style="display:flex;"><span>    );
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">private</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>	vk_device<span style="color:#f92672">*</span> device;
+</span></span><span style="display:flex;"><span>	VkCommandPool pool;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">void</span> <span style="color:#a6e22e">load_obj_mesh</span>(
+</span></span><span style="display:flex;"><span>		std<span style="color:#f92672">::</span>string mesh_path,
+</span></span><span style="display:flex;"><span>		std<span style="color:#f92672">::</span>string mat_path
+</span></span><span style="display:flex;"><span>	);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">friend</span> <span style="color:#66d9ef">class</span> <span style="color:#a6e22e">meshes_manager</span>;
+</span></span><span style="display:flex;"><span>};
+</span></span></code></pre></div><p>这里的submesh是按照材质划分的，代表一次drawcall，并且raw_data代表了内存中的顶点数据，我不会立即释放它，因为一个网格可能需要被多个renderpass使用，而不同的renderpass的shader vertex input binding可能不一样，因此，应该保留该内存直到meshes_manager明确调用release_cpu_mesh_data再释放。</p>
+<p>每个mesh都有一个register_renderpass函数，只有真正调用该注册函数，has_registered会变化为true，这时才会在绘制时收集它，否则过滤掉：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">namespace</span> renderpass_type
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">constexpr</span> <span style="color:#66d9ef">auto</span> texture_pass <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">constexpr</span> <span style="color:#66d9ef">auto</span> gbuffer_pass <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">//...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#66d9ef">constexpr</span> <span style="color:#66d9ef">auto</span> max_index <span style="color:#f92672">=</span> <span style="color:#ae81ff">2</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 对每种 renderpass 都应该注册对应的 shader material
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">void</span> sub_mesh<span style="color:#f92672">::</span>register_renderpass(
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">int32_t</span> passtype,
+</span></span><span style="display:flex;"><span>	vk_device<span style="color:#f92672">*</span> indevice,
+</span></span><span style="display:flex;"><span>	VkRenderPass in_renderpass,
+</span></span><span style="display:flex;"><span>	VkCommandPool in_pool
+</span></span><span style="display:flex;"><span>){
+</span></span><span style="display:flex;"><span>	ASSERT(passtype <span style="color:#f92672">&lt;</span> renderpass_type<span style="color:#f92672">::</span>max_index,<span style="color:#e6db74">&#34;render pass type越界。&#34;</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// 所有的模型矩阵的暂时用默认模型矩阵
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	model <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>rotate(glm<span style="color:#f92672">::</span>mat4(<span style="color:#ae81ff">1.0f</span>),glm<span style="color:#f92672">::</span>radians(<span style="color:#ae81ff">0.0f</span>),glm<span style="color:#f92672">::</span>vec3(<span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>,<span style="color:#ae81ff">0.0f</span>,<span style="color:#ae81ff">0.0f</span>));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// 对于每种renderpass，需要特殊设置它们的descriptor创建
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#66d9ef">if</span>(passtype <span style="color:#f92672">==</span> renderpass_type<span style="color:#f92672">::</span>texture_pass)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		mat_map[passtype] <span style="color:#f92672">=</span> material_texture<span style="color:#f92672">::</span>create(
+</span></span><span style="display:flex;"><span>			indevice,
+</span></span><span style="display:flex;"><span>			in_renderpass,
+</span></span><span style="display:flex;"><span>			in_pool,
+</span></span><span style="display:flex;"><span>			texture_ids[texture_id_type<span style="color:#f92672">::</span>diffuse],
+</span></span><span style="display:flex;"><span>			model
+</span></span><span style="display:flex;"><span>		);
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">else</span> <span style="color:#a6e22e">if</span>(passtype <span style="color:#f92672">==</span> renderpass_type<span style="color:#f92672">::</span>gbuffer_pass)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		mat_map[passtype] <span style="color:#f92672">=</span> material_gbuffer<span style="color:#f92672">::</span>create(
+</span></span><span style="display:flex;"><span>			indevice,
+</span></span><span style="display:flex;"><span>			in_renderpass,
+</span></span><span style="display:flex;"><span>			in_pool,
+</span></span><span style="display:flex;"><span>			texture_ids,
+</span></span><span style="display:flex;"><span>			model
+</span></span><span style="display:flex;"><span>		);
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	has_registered[passtype] <span style="color:#f92672">=</span> true;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> mesh<span style="color:#f92672">::</span>register_renderpass(std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>vk_renderpass<span style="color:#f92672">&gt;</span> pass,std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>vk_shader_mix<span style="color:#f92672">&gt;</span> shader,<span style="color:#66d9ef">bool</span> reload_vertex_buf)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> submesh:sub_meshes)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		submesh.register_renderpass(pass<span style="color:#f92672">-&gt;</span>type,device,pass<span style="color:#f92672">-&gt;</span>render_pass,pool);
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span>(reload_vertex_buf)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 上传render pass对应的顶点buffer
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		vertex_bufs[pass<span style="color:#f92672">-&gt;</span>type] <span style="color:#f92672">=</span> vk_vertex_buffer<span style="color:#f92672">::</span>create(
+</span></span><span style="display:flex;"><span>			device,
+</span></span><span style="display:flex;"><span>			pool,
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 根据input attribute layout生成对应的顶点内存布局。
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>			raw_data.pack_type_stream(shader<span style="color:#f92672">-&gt;</span>per_vertex_attributes),
+</span></span><span style="display:flex;"><span>			shader<span style="color:#f92672">-&gt;</span>per_vertex_attributes
+</span></span><span style="display:flex;"><span>		);
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	has_registered[pass<span style="color:#f92672">-&gt;</span>type] <span style="color:#f92672">=</span> true;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>对于mesh draw函数，需要显式指定当前绘制位于哪个renderpass，做好binding，然后调用drawcall即可：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">void</span> sub_mesh<span style="color:#f92672">::</span>draw(std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>vk_command_buffer<span style="color:#f92672">&gt;</span> cmd_buf,<span style="color:#66d9ef">int32_t</span> passtype)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	ASSERT(passtype<span style="color:#f92672">&lt;</span>renderpass_type<span style="color:#f92672">::</span>max_index,<span style="color:#e6db74">&#34;render pass type越界。&#34;</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	mat_map[passtype]<span style="color:#f92672">-&gt;</span>pipeline<span style="color:#f92672">-&gt;</span>bind(<span style="color:#f92672">*</span>cmd_buf);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	vkCmdBindDescriptorSets(
+</span></span><span style="display:flex;"><span>		<span style="color:#f92672">*</span>cmd_buf,
+</span></span><span style="display:flex;"><span>		VK_PIPELINE_BIND_POINT_GRAPHICS,
+</span></span><span style="display:flex;"><span>		mat_map[passtype]<span style="color:#f92672">-&gt;</span>pipeline<span style="color:#f92672">-&gt;</span>layout,
+</span></span><span style="display:flex;"><span>		<span style="color:#ae81ff">0</span>,
+</span></span><span style="display:flex;"><span>		<span style="color:#ae81ff">1</span>,
+</span></span><span style="display:flex;"><span>		mat_map[passtype]<span style="color:#f92672">-&gt;</span>descriptor_set<span style="color:#f92672">-&gt;</span>descriptor_sets.data(),
+</span></span><span style="display:flex;"><span>		<span style="color:#ae81ff">0</span>,
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">nullptr</span>
+</span></span><span style="display:flex;"><span>	);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	index_buf<span style="color:#f92672">-&gt;</span>bind_and_draw(<span style="color:#f92672">*</span>cmd_buf);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> mesh<span style="color:#f92672">::</span>draw(std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>vk_command_buffer<span style="color:#f92672">&gt;</span> cmd_buf,<span style="color:#66d9ef">int32_t</span> pass_type)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	ASSERT(pass_type <span style="color:#f92672">&lt;</span> renderpass_type<span style="color:#f92672">::</span>max_index,<span style="color:#e6db74">&#34;render pass type越界。&#34;</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// 绑定所有的顶点缓冲
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	vertex_bufs[pass_type]<span style="color:#f92672">-&gt;</span>bind(<span style="color:#f92672">*</span>cmd_buf);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> submesh : sub_meshes)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		submesh.draw(cmd_buf,pass_type);
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>此时，Meshdraw Command设计初具雏形，调用方法如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">void</span> pbr_deferred<span style="color:#f92672">::</span>initialize_special()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	vk_renderpass_mix_data <span style="color:#a6e22e">mixdata</span>(<span style="color:#f92672">&amp;</span>device,<span style="color:#f92672">&amp;</span>swapchain);
+</span></span><span style="display:flex;"><span>	pass_texture <span style="color:#f92672">=</span> texture_pass<span style="color:#f92672">::</span>create(mixdata);
+</span></span><span style="display:flex;"><span>	pass_gbuffer <span style="color:#f92672">=</span> gbuffer_pass<span style="color:#f92672">::</span>create(mixdata,graphics_command_pool);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	g_meshes_manager.sponza_mesh<span style="color:#f92672">-&gt;</span>register_renderpass(pass_texture,g_shader_manager.texture_map_shader);
+</span></span><span style="display:flex;"><span>	g_meshes_manager.sponza_mesh<span style="color:#f92672">-&gt;</span>register_renderpass(pass_gbuffer,g_shader_manager.gbuffer_shader);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	record_renderCommand();
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> pbr_deferred<span style="color:#f92672">::</span>record_renderCommand()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	pass_gbuffer<span style="color:#f92672">-&gt;</span>cmd_buf<span style="color:#f92672">-&gt;</span>begin(VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT);
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		pass_gbuffer<span style="color:#f92672">-&gt;</span>begin(<span style="color:#f92672">*</span>pass_gbuffer<span style="color:#f92672">-&gt;</span>cmd_buf);
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            g_meshes_manager.sponza_mesh<span style="color:#f92672">-&gt;</span>draw(pass_gbuffer<span style="color:#f92672">-&gt;</span>cmd_buf,renderpass_type<span style="color:#f92672">::</span>gbuffer_pass);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>		pass_gbuffer<span style="color:#f92672">-&gt;</span>end(<span style="color:#f92672">*</span>pass_gbuffer<span style="color:#f92672">-&gt;</span>cmd_buf);
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>	pass_gbuffer<span style="color:#f92672">-&gt;</span>cmd_buf<span style="color:#f92672">-&gt;</span>end();
+</span></span><span style="display:flex;"><span>		
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">for</span> (size_t i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> graphics_command_buffers.size(); i<span style="color:#f92672">++</span>) 
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		pass_gbuffer<span style="color:#f92672">-&gt;</span>begin(<span style="color:#f92672">*</span>pass_gbuffer<span style="color:#f92672">-&gt;</span>cmd_buf,i);
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            g_meshes_manager.sponza_mesh<span style="color:#f92672">-&gt;</span>draw(pass_gbuffer<span style="color:#f92672">-&gt;</span>cmd_buf,renderpass_type<span style="color:#f92672">::</span>texture_pass);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>		pass_gbuffer<span style="color:#f92672">-&gt;</span>end(<span style="color:#f92672">*</span>pass_gbuffer<span style="color:#f92672">-&gt;</span>cmd_buf,i);
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>这样，vulkan绘制Mesh需要设置的内容大大减少了。</p>
+<p><img src="/images/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84VulkanMeshDraw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/z.png" alt="Image"></p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+        <a href="/tags/flower">Flower</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/">UE4移动端中的两种Resolve</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/texturecache-miss%E9%97%AE%E9%A2%98/">TextureCache Miss问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/">UE4.26 移动端手机Tiled Resolve性能记录</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

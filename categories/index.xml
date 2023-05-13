@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Categories on 月光下的旅行。</title>
+    <link>/categories/</link>
+    <description>Recent content in Categories on 月光下的旅行。</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh-cn</language>
+    <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
+    <lastBuildDate>Sat, 13 May 2023 00:00:00 +0000</lastBuildDate><atom:link href="/categories/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>实时渲染开发</title>
+      <link>/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/</link>
+      <pubDate>Sat, 13 May 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>Unreal</title>
+      <link>/categories/unreal/</link>
+      <pubDate>Mon, 18 Jul 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/categories/unreal/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>图形硬件Api</title>
+      <link>/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/</link>
+      <pubDate>Tue, 29 Mar 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>Flower</title>
+      <link>/categories/flower/</link>
+      <pubDate>Sun, 28 Nov 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/categories/flower/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>DCC</title>
+      <link>/categories/dcc/</link>
+      <pubDate>Tue, 02 Feb 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/categories/dcc/</guid>
+      <description></description>
+    </item>
+    
+  </channel>
+</rss>

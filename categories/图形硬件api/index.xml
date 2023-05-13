@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>图形硬件Api on 月光下的旅行。</title>
+    <link>/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/</link>
+    <description>Recent content in 图形硬件Api on 月光下的旅行。</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh-cn</language>
+    <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
+    <lastBuildDate>Tue, 29 Mar 2022 00:00:00 +0000</lastBuildDate><atom:link href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>简单实现UE5中的VirtualShadowMap与性能对比</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue5%E7%9A%84virtualshadowmap%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86%E4%B8%8E%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94/</link>
+      <pubDate>Tue, 29 Mar 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue5%E7%9A%84virtualshadowmap%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86%E4%B8%8E%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94/</guid>
+      <description>​ 在2021年UE5的Siggraph大会上，Epic的PPT简略提到了VirtualShadowMap的实现原理，但还是看得一脸懵逼。 ​ 新</description>
+    </item>
+    
+    <item>
+      <title>Vulkan TAA实现与细节</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/</link>
+      <pubDate>Sun, 28 Nov 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/</guid>
+      <description>一周时间过去后，TAA终于集成到了引擎中。 TAA On: TAA 的抗锯齿效果基本是最好的。 有关TAA的原理已经有很多的GDC分享PPT了，这里主要分享一下 Vulkan</description>
+    </item>
+    
+    <item>
+      <title>关于Vulkan渲染画面数据杂乱但Renderdoc下正常问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Tue, 09 Nov 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/</guid>
+      <description>主要原因总结如下： RenderDoc在每个Pass后会强制把FrameBuffer存储下来方便profile可视化每个drawcall的数据</description>
+    </item>
+    
+    <item>
+      <title>Vulkan异步队列与异步纹理上传</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/</link>
+      <pubDate>Sun, 17 Oct 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/</guid>
+      <description>Vulkan 常用的队列族有以下四种： VK_QUEUE_GRAPHICS_BIT 图形队列族 VK_QUEUE_COMPUTE_BIT 计算队列族 VK_QUEUE_TRANSFER_BIT 传输队列族 VK_QUEUE_SPARSE_BINDING_BIT 稀疏绑定队列族 基本上，现在机器的图形卡基本都含有（1、2、3）这些独立的队列</description>
+    </item>
+    
+    <item>
+      <title>Vulkan实现Sample Distribution Shadow Maps</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/</link>
+      <pubDate>Tue, 21 Sep 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/</guid>
+      <description>Sample Distribution Shadow Maps(SDSM) 和Cascade Shadow Map原理基本一模一样。但SDSM凭借其动态划分Casacde深度优势效果远胜于 CascadeShadowMap。</description>
+    </item>
+    
+    <item>
+      <title>Vulkan CascadeShadowMap中的常见问题与解决方案</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/</link>
+      <pubDate>Sun, 11 Jul 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/</guid>
+      <description>在先前的Vulkan CascadeShadowMap功能开发过程中，做了一个快速的CascadeShadowmap版本，其中还存在不少问题，</description>
+    </item>
+    
+    <item>
+      <title>VkWriteDescriptorSet内存堆释放问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Sat, 10 Jul 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/</guid>
+      <description>Vulkan更新描述符集信息时需要填写VkWriteDescriptorSet结构体，然后调用vkUpdateDescriptorSets将</description>
+    </item>
+    
+    <item>
+      <title>大型场景下的Vulkan CascadeShadowMap功能开发</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/</link>
+      <pubDate>Thu, 01 Jul 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/</guid>
+      <description>亚马逊开源的Bistro场景大小超过了300m x 300m。先前单纯ShadowMap算法已经无法满足如此大的场景阴影表现需求，就算单张Sha</description>
+    </item>
+    
+    <item>
+      <title>Vulkan中的实时软阴影与硬件优化</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/</link>
+      <pubDate>Thu, 29 Apr 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/</guid>
+      <description>ShadowMap算法需要解决阴影失真（Shadow Acne）和阴影抗锯齿问题，前者可以通过 shadow bias 解决，后者可以使用自定义滤波器如pcf、vs</description>
+    </item>
+    
+    <item>
+      <title>Vulkan利用SpirV-Cross提取Shader反射信息来自动构建MeshDrawCommand</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/</link>
+      <pubDate>Wed, 14 Apr 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/</guid>
+      <description>Vulkan准备一次MeshDrawCommand非常麻烦，要写很多代码，这时候一种可自适应性的、自动填充pipeline和vao的Mesh</description>
+    </item>
+    
+    <item>
+      <title>UE4移动端中的两种Resolve</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/</link>
+      <pubDate>Sun, 21 Mar 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/</guid>
+      <description>一种是 MSAA Resolve，原因是MultiSample（过采样）的RenderBuffer需要经过一些加权处理（重采样）才能转换为不带MSAA</description>
+    </item>
+    
+    <item>
+      <title>TextureCache Miss问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/texturecache-miss%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Thu, 03 Dec 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/texturecache-miss%E9%97%AE%E9%A2%98/</guid>
+      <description>之前做地形纹理拼接时遇到大量的Texture Cache Miss问题，导致着色程序的性能下降，正好周末有空可以看这个论文：http://fileadm</description>
+    </item>
+    
+    <item>
+      <title>UE4.26 移动端手机Tiled Resolve性能记录</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/</link>
+      <pubDate>Fri, 14 Aug 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/</guid>
+      <description>Forward管线，ShadowDepth Map Resolve，骁龙865: 2048 * 2480, Reslove Time 5.1ms. 1024 * 1024, Resolve Time 1.21ms. 768 * 768, Resolve Time 0.61ms.</description>
+    </item>
+    
+  </channel>
+</rss>

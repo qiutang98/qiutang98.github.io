@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>DCC on 月光下的旅行。</title>
+    <link>/categories/dcc/</link>
+    <description>Recent content in DCC on 月光下的旅行。</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh-cn</language>
+    <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
+    <lastBuildDate>Tue, 02 Feb 2021 00:00:00 +0000</lastBuildDate><atom:link href="/categories/dcc/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Houdini OpenCL Master Class笔记</title>
+      <link>/post/dcc/houdini-opencl-masterclass%E7%AC%94%E8%AE%B0/</link>
+      <pubDate>Tue, 02 Feb 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/dcc/houdini-opencl-masterclass%E7%AC%94%E8%AE%B0/</guid>
+      <description>Houdini使用OpenCL实现GPU并行加速，并提供了OpenCL Sop节点，可以在几何体中随时使用。 这篇是Houdini 16.5 OpenCL Master Clas</description>
+    </item>
+    
+    <item>
+      <title>Substance Painter Shader与UE4移动端渲染效果同步</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/substance-painter%E4%B8%8Eue4%E9%85%8D%E5%A5%97shader/</link>
+      <pubDate>Sat, 26 Sep 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/substance-painter%E4%B8%8Eue4%E9%85%8D%E5%A5%97shader/</guid>
+      <description>要为UE4项目编写SP的Shader，首先得把MobileBasePassXXX.usf翻出来。然后将通用的直射光 漫反射+ 高光 + Skylight + IBL全</description>
+    </item>
+    
+    <item>
+      <title>houdini顶点属性通道对应UE4的属性通道</title>
+      <link>/post/dcc/houdini%E9%A1%B6%E7%82%B9%E5%B1%9E%E6%80%A7%E9%80%9A%E9%81%93%E5%AF%B9%E5%BA%94fbx%E7%9A%84%E5%B1%9E%E6%80%A7%E9%80%9A%E9%81%93/</link>
+      <pubDate>Fri, 28 Aug 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/dcc/houdini%E9%A1%B6%E7%82%B9%E5%B1%9E%E6%80%A7%E9%80%9A%E9%81%93%E5%AF%B9%E5%BA%94fbx%E7%9A%84%E5%B1%9E%E6%80%A7%E9%80%9A%E9%81%93/</guid>
+      <description>Houdini中计算出来的顶点属性信息是可以在导出fbx时直接Bake到顶点上的，在Unity，UE4中可以直接在Shader那里获取这些信</description>
+    </item>
+    
+    <item>
+      <title>各向异性材质渲染与美术流程注意事项</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%9D%E7%BB%B8%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9/</link>
+      <pubDate>Wed, 08 Jul 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%9D%E7%BB%B8%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9/</guid>
+      <description>原理 丝绸、头发这些各项异性材质，它们的高光部分计算使用的是各向异性方式。当然实时渲染里不可能像离线渲染里那样去积分计算，游戏中大部分都是用切</description>
+    </item>
+    
+    <item>
+      <title>3dsMax视口shader与unity同步</title>
+      <link>/post/dcc/3dsmax%E8%A7%86%E5%8F%A3shader%E4%B8%8Eunity%E5%90%8C%E6%AD%A5/</link>
+      <pubDate>Tue, 09 Jun 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/dcc/3dsmax%E8%A7%86%E5%8F%A3shader%E4%B8%8Eunity%E5%90%8C%E6%AD%A5/</guid>
+      <description>首先给出链接：https://github.com/HongHuaFu/Unity-3dsMax-ShaderSamples Max,Maya</description>
+    </item>
+    
+  </channel>
+</rss>

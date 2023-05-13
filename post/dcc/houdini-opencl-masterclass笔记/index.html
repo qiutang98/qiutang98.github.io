@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> Houdini OpenCL Master Class笔记 | 月光下的旅行。 </title>
+  <meta name="description" content="Houdini OpenCL Master Class笔记">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/dcc/houdini-opencl-masterclass%E7%AC%94%E8%AE%B0/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >Houdini OpenCL Master Class笔记</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-02-02T00:00:00Z">February 02, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/dcc">DCC</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>Houdini使用OpenCL实现GPU并行加速，并提供了OpenCL Sop节点，可以在几何体中随时使用。</p>
+<p>这篇是Houdini 16.5 OpenCL Master Class教程视频的总结。</p>
+<h2 id="基础opencl使用">基础OpenCL使用</h2>
+<p>新建一个 10000 * 10000 的网格（越大越能体现OpenCL的加速效果？），我们首先使用 Vex 实现简单的正弦波运动：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210202223912563.png" alt="image"></p>
+<p>如何将cpu执行的vex改成gpu执行的opencl呢？</p>
+<p>新建一个OpenCL节点，默认情况下会提示错误，勾选 <em><strong>Use Code Snippet</strong></em> ，可以得到一个code snippet窗口，接下来就可以在里面输入我们的opencl程序。</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210202224448612.png" alt="image"></p>
+<p>OpenCL 与 Cuda / Compute Shader 类似，每个程序都必须指定一个入口的 <strong>Kernel</strong> （或者称为main函数），随即该Kernel编译后将会在Gpu计算线程组中运行。</p>
+<p>为了实现 Cpu-Gpu 数据交互，OpenCL提供了Bindings选项来绑定属性（Attribute）、变量等，按需加入：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210202225046260.png" alt="image"></p>
+<p>比如上面的正弦波vex，如果改写成OpenCL程序，那么需要提供 @P 属性（可读可写），振幅amplitude变量（可读），周期（可读）以及相位（可读）。</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210202225410508.png" alt="image"></p>
+<p>注意@P属性勾选Writable选项。</p>
+<p>Attribute一般会有 Class 类别指示当前 OpenCL是运行在该几何体的哪个几何（Point、Vertex、Primitive、Detail）层级。</p>
+<p>设置完Binds后点击 Generate Kernel可以生成模板函数：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210202230046815.png" alt="image"></p>
+<p>把它复制到 Code Snippet中即可。</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210202230149907.png" alt="image"></p>
+<p>接下来的处理非常简单，基本按照常规Vex写法编写OpenCL即可：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210202230817148.png" alt="image"></p>
+<p>这里使用了新函数  <em><strong>vload3</strong></em> 来获取输入的属性（vector类型），实际上为OpenCL SDK中的 <em><strong>vloadn</strong></em> 函数，这里的3指示了指针数据组的长度。</p>
+<p>同样，存储值则使用 <em><strong>vstore3</strong></em> 来存储数据。</p>
+<h3 id="性能对比">性能对比</h3>
+<p><strong>Grid 1000x1000</strong>  <strong>Vex</strong> VS <strong>OpenCL</strong></p>
+<p>运行240帧，OpenCL13.995s消耗，Vex13.277s消耗。</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210202231858104.png" alt="image"></p>
+<p><strong>Grid 5000x5000</strong>  <strong>Vex</strong> VS <strong>OpenCL</strong></p>
+<p>运行30帧，OpenCL 32s消耗，Vex21s消耗。</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210202232501528.png" alt="image"></p>
+<p>实际上把Gpu同步的等待的8.185s减去，OpenCL的运算时间还是比Vex要慢233。</p>
+<p>因为OpenCL花费了大量的时间在显存 - 内存之间的数据Copy了，在使用Vulkan/DX的Compute Shader时也会有类似的问题，数据量巨大的简单计算，Gpu加速效果不明显，UAV复制写入时花费巨额时间，最后整体的时间反而不如多线程Simd加速的Cpu计算快。</p>
+<p>在Houdini Sop中大部分节点操作都是需要频繁读取-写入，特别是Polygon类型的。</p>
+<p>真正大幅度加速的是那种多次迭代，每次都使用上一次的计算结果的计算（卷积？），这样数据可以一直存放在显存中无需进行频繁的复制拷贝动作。</p>
+<h2 id="迭代型的opencl">迭代型的OpenCL</h2>
+<p>首先是一个很简单的Smooth算法：遍历几何体的每个顶点，找到临近的点集，计算它们的坐标平均值然后作为该点的新坐标：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span><span style="color:#66d9ef">int</span> npts[] <span style="color:#f92672">=</span> neighbours(<span style="color:#ae81ff">0</span>, <span style="color:#960050;background-color:#1e0010">@</span>ptnum);
+</span></span><span style="display:flex;"><span>vector avg <span style="color:#f92672">=</span> <span style="color:#960050;background-color:#1e0010">@</span>P;
+</span></span><span style="display:flex;"><span>foreach (<span style="color:#66d9ef">int</span> npt; npts)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    vector npos <span style="color:#f92672">=</span> point(<span style="color:#ae81ff">0</span>, <span style="color:#e6db74">&#39;P&#39;</span>, npt);
+</span></span><span style="display:flex;"><span>    avg <span style="color:#f92672">+=</span> npos;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>avg <span style="color:#f92672">/=</span> len(npts)<span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span><span style="color:#960050;background-color:#1e0010">@</span>P <span style="color:#f92672">=</span> avg;
+</span></span></code></pre></div><p>可以多次Smooth，每次Smooth都在上一次的结果上继续，用一个for-feedback嵌套起来：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210203224224560.png" alt="image"></p>
+<p>注意这里使用compile_block节点编译加速for-loop的多线程计算，并且opencl也能在compileblock节点中加速。</p>
+<p>如果转化为opencl，则为：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span>kernel <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">kernelName</span>( 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> P_length, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> P ,
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> npts_length, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">int</span> <span style="color:#f92672">*</span> npts_index, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">int</span> <span style="color:#f92672">*</span> npts,
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> __scratch_length,
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> __scratch
+</span></span><span style="display:flex;"><span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> idx <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (idx <span style="color:#f92672">&gt;=</span> P_length)
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    float3 avg <span style="color:#f92672">=</span> vload3(idx, P);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> startidx <span style="color:#f92672">=</span> npts_index[idx];
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> len <span style="color:#f92672">=</span> npts_index[idx<span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>] <span style="color:#f92672">-</span> startidx;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> len; i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">int</span> npt <span style="color:#f92672">=</span> npts[startidx <span style="color:#f92672">+</span> i];
+</span></span><span style="display:flex;"><span>        float3 npos <span style="color:#f92672">=</span> vload3(npt, P);
+</span></span><span style="display:flex;"><span>        avg <span style="color:#f92672">+=</span> npos;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    avg <span style="color:#f92672">/=</span> len <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>    vstore3(avg, idx, __scratch);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>kernel <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">writeBack</span>( 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> P_length, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> P ,
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> npts_length, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">int</span> <span style="color:#f92672">*</span> npts_index, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">int</span> <span style="color:#f92672">*</span> npts,
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> __scratch_length,
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> __scratch
+</span></span><span style="display:flex;"><span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> idx <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (idx <span style="color:#f92672">&gt;=</span> P_length)
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    float3 avg <span style="color:#f92672">=</span> vload3(idx, __scratch);
+</span></span><span style="display:flex;"><span>    vstore3(avg, idx, P);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>注意这里使用了 writeBack kernal来确保for-loop并行数据写入顺序不发生冲突，注意writeBack Kernal 发生在 Main Kernal后，并且使用同样的函数参数：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210203232913275.png" alt="image"></p>
+<p>__scratch为额外绑定的Read-Write暂存属性：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210203233113147.png" alt="image"></p>
+<p>性能测试方面：10000面的几何体，Smooth次数 &gt; 100时OpenCL速度开始超过vex。整体速度优化还是很明显的。</p>
+<h2 id="opencl处理地形">OpenCL处理地形</h2>
+<p>Houdini的地形就是一个volume，适合OpenCL加速。</p>
+<p>首先是简单的高度平移，在Binding中需要绑定“height”层的信息：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210203233935339.png" alt="image"></p>
+<p>注意volume的选择，在点击generate code时会生成对应的参数输入：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span>kernel <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">kernelName</span>( 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_z, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_offset, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_z, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> height 
+</span></span><span style="display:flex;"><span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidx <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidy <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidz <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">2</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> idx <span style="color:#f92672">=</span> height_stride_offset <span style="color:#f92672">+</span> height_stride_x <span style="color:#f92672">*</span> gidx
+</span></span><span style="display:flex;"><span>                               <span style="color:#f92672">+</span> height_stride_y <span style="color:#f92672">*</span> gidy
+</span></span><span style="display:flex;"><span>                               <span style="color:#f92672">+</span> height_stride_z <span style="color:#f92672">*</span> gidz;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    height[idx] <span style="color:#f92672">+=</span> <span style="color:#ae81ff">100</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>线程对应的idx会直接帮我们算好，这里直接加上100的单位平移。</p>
+<p>接下来是高度模糊，也就是 HeightFieldBlur 节点的OpenCL。</p>
+<p>算法比较简单，与几何体的Smooth类似，采样体素周围的其他体素“height”值，加起来求均值，注意边界情况，使用Clamp限制不要超出边界：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span>kernel <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">kernelName</span>( 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_z, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_offset, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_z, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> height,
+</span></span><span style="display:flex;"><span>                global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> __scratch 
+</span></span><span style="display:flex;"><span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidx <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidy <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidz <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">2</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> idx <span style="color:#f92672">=</span> height_stride_offset <span style="color:#f92672">+</span> height_stride_x <span style="color:#f92672">*</span> gidx
+</span></span><span style="display:flex;"><span>                               <span style="color:#f92672">+</span> height_stride_y <span style="color:#f92672">*</span> gidy
+</span></span><span style="display:flex;"><span>                               <span style="color:#f92672">+</span> height_stride_z <span style="color:#f92672">*</span> gidz;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>     <span style="color:#66d9ef">float</span> total <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>     <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> dx <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>; dx <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1</span>; dx<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>     {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> dy <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>; dy <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1</span>; dy<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> dz <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>; dz <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1</span>; dz<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">int</span> srcidx <span style="color:#f92672">=</span> height_stride_offset
+</span></span><span style="display:flex;"><span>                                <span style="color:#f92672">+</span> height_stride_x <span style="color:#f92672">*</span> clamp(gidx<span style="color:#f92672">+</span>dx, <span style="color:#ae81ff">0</span>, height_res_x<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>                                <span style="color:#f92672">+</span> height_stride_y <span style="color:#f92672">*</span> clamp(gidy<span style="color:#f92672">+</span>dy, <span style="color:#ae81ff">0</span>, height_res_y<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>                                <span style="color:#f92672">+</span> height_stride_z <span style="color:#f92672">*</span> clamp(gidz<span style="color:#f92672">+</span>dz, <span style="color:#ae81ff">0</span>, height_res_z<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">float</span> src_height <span style="color:#f92672">=</span> height[srcidx];
+</span></span><span style="display:flex;"><span>                
+</span></span><span style="display:flex;"><span>                total <span style="color:#f92672">+=</span> src_height;                   
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>     }
+</span></span><span style="display:flex;"><span> 
+</span></span><span style="display:flex;"><span>     __scratch[idx] <span style="color:#f92672">=</span> total<span style="color:#f92672">/</span><span style="color:#ae81ff">27</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>kernel <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">writeBack</span>( 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_z, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_offset, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_z, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> height,
+</span></span><span style="display:flex;"><span>                global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> __scratch 
+</span></span><span style="display:flex;"><span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidx <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidy <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidz <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">2</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> idx <span style="color:#f92672">=</span> height_stride_offset <span style="color:#f92672">+</span> height_stride_x <span style="color:#f92672">*</span> gidx
+</span></span><span style="display:flex;"><span>                               <span style="color:#f92672">+</span> height_stride_y <span style="color:#f92672">*</span> gidy
+</span></span><span style="display:flex;"><span>                               <span style="color:#f92672">+</span> height_stride_z <span style="color:#f92672">*</span> gidz;
+</span></span><span style="display:flex;"><span>    height[idx] <span style="color:#f92672">=</span> __scratch[idx];
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>这里同样申请了__scratch和WriteBack Kernel来存储数据：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210203235606175.png" alt="image"></p>
+<p>注意一点，__scratch可以勾选force_alignment选项，那么生成的代码不会就有 &quot; stride 和 res“ 相关的信息，直接与前面volume信息对齐内存，简洁代码：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210204000038579.png" alt="image"></p>
+<p>剩下的就是GPU数据类型强制转换的一些问题了，和GLSL、HLSL一样，OpenCL的数据类型是严格检查的强类型，使用时必须注意数据的类型，浮点型必须标记（1.0），整型为(1)，不然会有奇奇怪怪的错误。</p>
+<p>对于Mask输入，Houdini支持Optional输入（生成对应的检测宏），这样在输入的HF中不包含mask时可以直接使用#ifdef跳过而不是报错：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210204000147884.png" alt="image"></p>
+<p>OpenCL部分代码如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span>kernel <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">kernelName</span>( 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_z, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_offset, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_z, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> height,
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> __scratch
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#ifdef HAS_mask
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                 , global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> mask
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#endif
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidx <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidy <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidz <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">2</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> idx <span style="color:#f92672">=</span> height_stride_offset <span style="color:#f92672">+</span> height_stride_x <span style="color:#f92672">*</span> gidx
+</span></span><span style="display:flex;"><span>                               <span style="color:#f92672">+</span> height_stride_y <span style="color:#f92672">*</span> gidy
+</span></span><span style="display:flex;"><span>                               <span style="color:#f92672">+</span> height_stride_z <span style="color:#f92672">*</span> gidz;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#ifdef HAS_mask
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>     <span style="color:#66d9ef">if</span> (mask[idx] <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">0.5</span>)
+</span></span><span style="display:flex;"><span>     {
+</span></span><span style="display:flex;"><span>        __scratch[idx] <span style="color:#f92672">=</span> height[idx];
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>     }
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#endif
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>     <span style="color:#66d9ef">float</span> total <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>     <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> dx <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>; dx <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1</span>; dx<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>     {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> dy <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>; dy <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1</span>; dy<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> dz <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>; dz <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1</span>; dz<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">int</span> srcidx <span style="color:#f92672">=</span> height_stride_offset
+</span></span><span style="display:flex;"><span>                                <span style="color:#f92672">+</span> height_stride_x <span style="color:#f92672">*</span> clamp(gidx<span style="color:#f92672">+</span>dx, <span style="color:#ae81ff">0</span>, height_res_x<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>                                <span style="color:#f92672">+</span> height_stride_y <span style="color:#f92672">*</span> clamp(gidy<span style="color:#f92672">+</span>dy, <span style="color:#ae81ff">0</span>, height_res_y<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>                                <span style="color:#f92672">+</span> height_stride_z <span style="color:#f92672">*</span> clamp(gidz<span style="color:#f92672">+</span>dz, <span style="color:#ae81ff">0</span>, height_res_z<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">float</span> src_height <span style="color:#f92672">=</span> height[srcidx];
+</span></span><span style="display:flex;"><span>                
+</span></span><span style="display:flex;"><span>                total <span style="color:#f92672">+=</span> src_height;                   
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>     }
+</span></span><span style="display:flex;"><span> 
+</span></span><span style="display:flex;"><span>     __scratch[idx] <span style="color:#f92672">=</span> total<span style="color:#f92672">/</span><span style="color:#ae81ff">27</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>kernel <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">writeBack</span>( 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_z, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_stride_offset, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> height_res_z, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> height,
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> __scratch
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#ifdef HAS_mask
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                 , global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> mask
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#endif
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidx <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidy <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> gidz <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">2</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> idx <span style="color:#f92672">=</span> height_stride_offset <span style="color:#f92672">+</span> height_stride_x <span style="color:#f92672">*</span> gidx
+</span></span><span style="display:flex;"><span>                               <span style="color:#f92672">+</span> height_stride_y <span style="color:#f92672">*</span> gidy
+</span></span><span style="display:flex;"><span>                               <span style="color:#f92672">+</span> height_stride_z <span style="color:#f92672">*</span> gidz;
+</span></span><span style="display:flex;"><span>    height[idx] <span style="color:#f92672">=</span> __scratch[idx];
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><h2 id="opencl处理体积与几何体">OpenCL处理体积与几何体</h2>
+<p>其实地形就是一种体积了，这里给出更通用的一种实例：</p>
+<p>实现效果为：一个几何体，一个体积，要求几何体与体积相交的点给上特定的颜色。</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210204001542865.png" alt="image"></p>
+<p>这里Merge后作为OpenCL节点的输入：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210204001635146.png" alt="image"></p>
+<p>其中，体积为name = density的primitive：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210204001740818.png" alt="image"></p>
+<p>在OpenCL的Binding注意顺序：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210204001824579.png" alt="image"></p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210204001833771.png" alt="image"></p>
+<p>因为我们想对几何体做处理，所以选择 ”First Writeable Attribute“ 而不是 Volume：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210204001931659.png" alt="image"></p>
+<p>OpenCL代码部分也是非常简单的，先得到当前点的坐标，然后转化为体素坐标，获取该体素的密度值，&gt; 0.5则改变顶点色：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span>kernel <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">kernelName</span>( 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> P_length, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> P ,
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> Cd_length, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> Cd ,
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> density_stride_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> density_stride_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> density_stride_z, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> density_stride_offset, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> density_res_x, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> density_res_y, 
+</span></span><span style="display:flex;"><span>                 <span style="color:#66d9ef">int</span> density_res_z, 
+</span></span><span style="display:flex;"><span>                 float16 density_xformtovoxel, 
+</span></span><span style="display:flex;"><span>                 global <span style="color:#66d9ef">float</span> <span style="color:#f92672">*</span> density 
+</span></span><span style="display:flex;"><span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> idx <span style="color:#f92672">=</span> get_global_id(<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (idx <span style="color:#f92672">&gt;=</span> Cd_length)
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    float3 pos <span style="color:#f92672">=</span> vload3(idx, P);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    float4 voxelpos <span style="color:#f92672">=</span> pos.x <span style="color:#f92672">*</span> density_xformtovoxel.lo.lo <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>                      pos.y <span style="color:#f92672">*</span> density_xformtovoxel.lo.hi <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>                      pos.z <span style="color:#f92672">*</span> density_xformtovoxel.hi.lo <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>                      density_xformtovoxel.hi.hi;
+</span></span><span style="display:flex;"><span>    int3 voxelidx;
+</span></span><span style="display:flex;"><span>    voxelidx.x <span style="color:#f92672">=</span> clamp((<span style="color:#66d9ef">int</span>)(floor(voxelpos.x)), <span style="color:#ae81ff">0</span>, density_res_x<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>    voxelidx.y <span style="color:#f92672">=</span> clamp((<span style="color:#66d9ef">int</span>)(floor(voxelpos.y)), <span style="color:#ae81ff">0</span>, density_res_y<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>    voxelidx.z <span style="color:#f92672">=</span> clamp((<span style="color:#66d9ef">int</span>)(floor(voxelpos.z)), <span style="color:#ae81ff">0</span>, density_res_z<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    float3 c <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> d <span style="color:#f92672">=</span> density[density_stride_offset <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>                      density_stride_x <span style="color:#f92672">*</span> voxelidx.x <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>                      density_stride_y <span style="color:#f92672">*</span> voxelidx.y <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>                      density_stride_z <span style="color:#f92672">*</span> voxelidx.z];
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (d <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0.5</span>)
+</span></span><span style="display:flex;"><span>        c.y <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>    vstore3(c, idx, Cd);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>结果如下：</p>
+<p><img src="/images/HoudiniOpenCLMasterClass%E7%AC%94%E8%AE%B0.assets/image-20210204002204603.png" alt="image"></p>
+<h2 id="总结">总结</h2>
+<p>OpenCL作为Houdini的主要GPU加速节点，已经有了广泛的应用，传统的HeightField工具，大部分都已经使用OpenCL重写了一遍，它们是非常好的OpenCL参考资料。</p>
+<p>Vex的计算速度大多数情况都能满足需求了（特别是游戏业），除非有大规模的计算，有很高的性能需求，不然不建议上OpenCL。</p>
+<p>OpenCL的内置计算数学库还是比较少的，缺乏开箱即用的几何数学函数，语言也比较原始，写起来容易出错（报错信息特别反人类）。</p>
+<p>之后有空的话会尝试一下OpenCL版的烟雾模拟，估计计算速度会比Vex快上不少，但肯定会比ComputeShader慢。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/dcc">DCC</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6sss%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C/">移动端树叶SSS效果制作</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/substance-painter%E4%B8%8Eue4%E9%85%8D%E5%A5%97shader/">Substance Painter Shader与UE4移动端渲染效果同步</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/dcc/houdini%E9%A1%B6%E7%82%B9%E5%B1%9E%E6%80%A7%E9%80%9A%E9%81%93%E5%AF%B9%E5%BA%94fbx%E7%9A%84%E5%B1%9E%E6%80%A7%E9%80%9A%E9%81%93/">houdini顶点属性通道对应UE4的属性通道</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%9D%E7%BB%B8%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9/">各向异性材质渲染与美术流程注意事项</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/dcc/3dsmax%E8%A7%86%E5%8F%A3shader%E4%B8%8Eunity%E5%90%8C%E6%AD%A5/">3dsMax视口shader与unity同步</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 移动端树叶SSS效果制作 | 月光下的旅行。 </title>
+  <meta name="description" content="移动端树叶SSS效果制作">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6sss%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >移动端树叶SSS效果制作</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2020-12-13T00:00:00Z">December 13, 2020</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>UE4内置了双面植被渲染的ShadingModel，内部使用了TwoSidedBxDF的专门BxDF方程：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span>FDirectLighting <span style="color:#a6e22e">TwoSidedBxDF</span>( FGBufferData GBuffer, half3 N, half3 V, half3 L, <span style="color:#66d9ef">float</span> Falloff, <span style="color:#66d9ef">float</span> NoL, 
+</span></span><span style="display:flex;"><span>	FAreaLight AreaLight, FShadowTerms Shadow )
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	FDirectLighting Lighting <span style="color:#f92672">=</span> DefaultLitBxDF( GBuffer, N, V, L, Falloff, NoL, AreaLight, Shadow );
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	float3 SubsurfaceColor <span style="color:#f92672">=</span> ExtractSubsurfaceColor(GBuffer);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// http://blog.stevemcauley.com/2011/12/03/energy-conserving-wrapped-diffuse/
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#66d9ef">float</span> Wrap <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.5</span>;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> WrapNoL <span style="color:#f92672">=</span> saturate( ( <span style="color:#f92672">-</span>dot(N, L) <span style="color:#f92672">+</span> Wrap ) <span style="color:#f92672">/</span> Square( <span style="color:#ae81ff">1</span> <span style="color:#f92672">+</span> Wrap ) );
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Scatter distribution
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#66d9ef">float</span> VoL <span style="color:#f92672">=</span> dot(V, L);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> Scatter <span style="color:#f92672">=</span> D_GGX( <span style="color:#ae81ff">0.6</span><span style="color:#f92672">*</span><span style="color:#ae81ff">0.6</span>, saturate( <span style="color:#f92672">-</span>VoL ) );
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	Lighting.Transmission <span style="color:#f92672">=</span> AreaLight.FalloffColor <span style="color:#f92672">*</span> (Falloff <span style="color:#f92672">*</span> WrapNoL <span style="color:#f92672">*</span> Scatter) <span style="color:#f92672">*</span> SubsurfaceColor;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> Lighting;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>这种Wrap式的BxDF（比如Half-Lambert）会在背光部分添加适当的补光，而不是完全变黑，比较忠实的还原了光线在叶子间传递的衰减情况。</p>
+<p>通常情况下Wrap式光照模型会过亮（能量不守恒），导致与周围的其它遵循能量守恒的PBR着色模型亮度不统一（在环境中显得格格不入，美术风格不统一），技术美术被迫放出更多的着色细节参数，让美术细调以达到着色风格统一。</p>
+<p>这实际上是风格化PBR必然会遇到的问题，也是比较重要的问题，风格化的PBR会对特殊的材质，各向异性如：丝绸、头发，SSS类型如：玉石、皮肤，特殊环境材质如：河流、湖面、海面、冰、沙子等，对这些特殊的材质设计单独的Shading Model，很难确保所有的ShadingModel都遵循能量守恒，同时也很难确保所有的着色细节亮度统一。</p>
+<p>我认为之前所在的项目也有类似的问题，我们修改了很多着色相关的细节，做了很多风格化的处理，但并没有确保所有的着色模型（比如水），都遵循最基本的能量守恒。</p>
+<p>文章（http://blog.stevemcauley.com/2011/12/03/energy-conserving-wrapped-diffuse/）给出了基于能量衰减的 Warp BxDF，可以和周围的PBR着色模型很好的融合在一起。</p>
+<p>另外全局光的球谐光也是很重要的一项，树叶计算球谐光时使用反向的法向量，它会带来很细腻的光影变化。</p>
+<p>移动端渲染树叶时，出于性能考虑，会使用插片方法来节省性能，并且为了避开Overdraw，经常插片数很少，这导致树叶的光影感出不来。换言之，插片树缺少了许多高频的几何细节，没有办法直接计算透视SSS效果。</p>
+<p>因此，在SpeedTree这种专业造树软件中，会额外计算一项高频的几何环境光遮蔽系数存到顶点色的r通道中，导入UE4时，可以将其作为AO项参与透射部分的计算。</p>
+<p><img src="/images/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6SSS%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C.assets/image-20201213104237318.png" alt="image-20201213104237318"></p>
+<p>另外，houdini的GameLab工具中也提供了计算顶点AO的工具。</p>
+<p>单纯使用AO顶点色是出不来对比强烈的SSS效果的，还需要和光照贴图（阴影贴图）配合加深过渡。</p>
+<p>光照贴图的烘焙也比较重要，直接使用原生的法线容易烘焙出死黑，需要改一下树的法线，而单纯的球形法线过渡在复杂结构的树上光影过渡单调，并不合适。</p>
+<p>在育碧的分享中使用的是近似包围体来转移法线：</p>
+<p><img src="/images/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6SSS%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C.assets/image-20201213104356043.png" alt="image-20201213104356043"></p>
+<p>这个在Houdini中制作非常的简单，只需要简单几步：</p>
+<ol>
+<li>撒点。</li>
+</ol>
+<p><img src="/images/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6SSS%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C.assets/image-20201213104823883.png" alt="image-20201213104823883"></p>
+<ol start="2">
+<li>vdb融合</li>
+</ol>
+<p><img src="/images/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6SSS%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C.assets/image-20201213104923700.png" alt="image-20201213104923700"></p>
+<ol start="3">
+<li>vdb平滑&amp;&amp;转移法线</li>
+</ol>
+<p><img src="/images/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6SSS%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C.assets/image-20201213105548138.png" alt="image-20201213105548138"></p>
+<p>可以看到基本思路是使用体积平滑来生成一个近似平滑的几何体。</p>
+<p><img src="/images/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6SSS%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C.assets/image-20201213111423556.png" alt="image-20201213111423556"></p>
+<p>这里使用的是vdbfromparticlefluid而不是直接convert to vdb，是因为普通的插片树，撒点后直接生成的vdb并不连续，而vdbfromparticlefluid有一个体素大小选项可以调节每个点密度元球大小，进而将它们连接起来。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/dcc">DCC</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/substance-painter%E4%B8%8Eue4%E9%85%8D%E5%A5%97shader/">Substance Painter Shader与UE4移动端渲染效果同步</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%9D%E7%BB%B8%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9/">各向异性材质渲染与美术流程注意事项</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/dcc/3dsmax%E8%A7%86%E5%8F%A3shader%E4%B8%8Eunity%E5%90%8C%E6%AD%A5/">3dsMax视口shader与unity同步</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%9C%B0%E5%9B%BE%E7%BA%B9%E7%90%86%E6%8B%BC%E6%8E%A5%E6%B7%B7%E5%90%88%E5%AE%9E%E7%8E%B0%E6%9B%B4%E5%A4%9A%E7%9A%84%E5%9C%B0%E5%BD%A2%E7%BB%86%E8%8A%82/">地形纹理拼接混合实现更多的地形细节</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/ue4%E5%8D%A1%E9%80%9A%E6%B8%B2%E6%9F%93%E5%B0%9D%E8%AF%95/">UE4卡通渲染尝试</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

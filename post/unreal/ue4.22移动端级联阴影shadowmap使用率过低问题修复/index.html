@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 虚幻4移动端级联阴影ShadowMap使用率过低问题修复 | 月光下的旅行。 </title>
+  <meta name="description" content="虚幻中修复ShadowMap使用率过低问题">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E7%BA%A7%E8%81%94%E9%98%B4%E5%BD%B1shadowmap%E4%BD%BF%E7%94%A8%E7%8E%87%E8%BF%87%E4%BD%8E%E9%97%AE%E9%A2%98%E4%BF%AE%E5%A4%8D/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >虚幻4移动端级联阴影ShadowMap使用率过低问题修复</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2020-10-17T00:00:00Z">October 17, 2020</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/unreal">Unreal</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>在微软家的这篇 [<a href="https://docs.microsoft.com/zh-tw/windows/win32/dxtecharts/common-techniques-to-improve-shadow-depth-maps?redirectedfrom=MSDN">Common Techniques to Improve Shadow Depth Maps</a>]文章中，详细讨论Shadow Map的各种问题和解决方案，里面的摩尔纹、Peter Pan、抗锯齿等常规问题都有着详细的解决方案。在简述Shadow Camera Setup的时候，他们简单提了下Shadow Camera Fit To Scene和Fit To View的两种做法，而这两种做法区别，对ShadowMap的利用率影响非常的大。</p>
+<p>UE4内部的阴影解决方案很多，不过移动端能用上的就只有CSM。为了兼顾移动端的性能表现，设置CSM的数目 = 1就够用了，这时候的CSM实际上和单纯的Project ShadowMap算法没啥太大区别了，但是CSM数目设置为1时，UE4的阴影显得非常的淡，在人物角色上阴影表现得非常的轻浮，没有色彩感官上体现的厚重感，层次感也没体现出来，大场景时感觉还好。在人物特写的角色展示界面，这阴影质量根本不够用，emm，我记得我第一天搬下来游缘的时候滔哥就跟我说UE的阴影有问题，不过那时啥都不会天天划水（当然现在也啥都不会天天划水），过了好几个月都不想动这个阴影，直到最近几天有空了于是安排时间来解决这个问题。</p>
+<p>国庆放假回来后就开始着手解决这些问题，修改这部分的源码，一共花了大概四天时间来看引擎的CSM部分的源码，我一开始的重心是放在了阴影相机的投影矩阵构建函数上，在那里折腾了好久吧，实际上也没啥收获，不过后来在微软家的DX12 Samples里发现了Mesh Viewer实例工程，里面的Sponza阴影贴图蛮好的。而微软他们家构建投影矩阵的方式和UE4也一样，唯一不同的就是相机视锥包围盒的构建方式不同，微软他们家是写死了的。UE4使用了Fit To View的方式。</p>
+<p>UE4级联阴影Project Matrix的Setup步骤如下：</p>
+<ol>
+<li>根据编辑器中的CSM设置计算CSM每一级的范围距离等信息。GetShadowSplitBounds</li>
+<li>计算当前级联的视锥体包围球。GetShadowSplitBoundsDepthRange</li>
+<li>根据当前包围球范围剔除包围球外的投影体。</li>
+<li>根据包围球设置阴影相机的投影矩阵。</li>
+</ol>
+<p>在上面四个步骤中，有意思的地方是步骤二的包围球计算。他们先计算了视锥的八个顶点，然后根据这八个顶点计算一个包围球。算法如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#75715e">// Calculate the ideal bounding sphere for the subfrustum.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// Fx  = (Db^2 - da^2) / 2Fl + Fl / 2 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// (where Da is the far diagonal, and Db is the near, and Fl is the frustum length)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">float</span> OptimalOffset <span style="color:#f92672">=</span> (DiagonalBSq <span style="color:#f92672">-</span> DiagonalASq) <span style="color:#f92672">/</span> (<span style="color:#ae81ff">2.0f</span> <span style="color:#f92672">*</span> FrustumLength) <span style="color:#f92672">+</span> FrustumLength <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.5f</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> CentreZ <span style="color:#f92672">=</span> SplitFar <span style="color:#f92672">-</span> OptimalOffset;
+</span></span><span style="display:flex;"><span>CentreZ <span style="color:#f92672">=</span> FMath<span style="color:#f92672">::</span>Clamp( CentreZ, SplitNear, SplitFar );
+</span></span><span style="display:flex;"><span>FSphere <span style="color:#a6e22e">CascadeSphere</span>(ViewOrigin <span style="color:#f92672">+</span> CameraDirection <span style="color:#f92672">*</span> CentreZ, <span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span> (int32 Index <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; Index <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">8</span>; Index<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	CascadeSphere.W <span style="color:#f92672">=</span> FMath<span style="color:#f92672">::</span>Max(CascadeSphere.W, FVector<span style="color:#f92672">::</span>DistSquared(CascadeFrustumVerts[Index], CascadeSphere.Center));
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>这种做法比直接根据八个顶点求中点然后取最大半径（一把梭的方式，我的最爱）的构建方式得到的包围球半径要小一点。</p>
+<p>Emmm，最终，问题找到了，我接下来着手把UE4的阴影相机Bounds构建方式改成了Fit To View Scene的方式（这是什么鬼方式？）。命名有点奇怪，因为我既按照Fit To View的方式构建了当前级联的视锥体，再在当前级联视锥体内构建所有Shadow Caster的Combine Bounds，最终根据原来的视锥体Bounds和后来的Shadow Caster Combine Bounds做半径比较，返回半径小的那个，这样，在投影体少的场景中，既可以利用Fit To Scene充分切合投影的优势，又可以在投影体多的场景中利用Fit To View的高利用率优势。</p>
+<p>我这里的修改实际上把 Fit To View 和 Fit To Scene都算了一遍，性能有点吃不消，profile时显示在骁龙660上每帧多花了0.12ms的cpu时间。</p>
+<p>然后15、16号项目组准备搬家，这两天也是无心工作。16号下午美术部这边就剩下我一个人了，临近下班的时候正好引擎编译通过了，在RenderDoc里面测试了一切正常，现在Shadow Map利用率非常的高。</p>
+<p><img src="/images/%E6%8D%8F%E8%84%B8%E7%9A%84ShadowMap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92/image-20201122112254087.png" alt="Image"></p>
+<p>另外，当场景中投影体Bounds小，但是距离离得比较远时，原始的Combine操作导致Bounds增长速度非常的快，而远处的Caster实际上并不重要，加入一个根据相机视点距离和Caster Bounds大小作为权重的有偏Combine可以有效解决这个问题。</p>
+<p>最后，对于选角、角色展示等场景，Caster很少时，我直接根据整个场景的Caster bounds来构建投影矩阵，连视锥构建都省了，快捷方便。XD。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/unreal">Unreal</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/substance-painter%E4%B8%8Eue4%E9%85%8D%E5%A5%97shader/">Substance Painter Shader与UE4移动端渲染效果同步</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/">UE4.26 移动端手机Tiled Resolve性能记录</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%9D%E7%BB%B8%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9/">各向异性材质渲染与美术流程注意事项</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0/">简单翻页效果</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/dcc/3dsmax%E8%A7%86%E5%8F%A3shader%E4%B8%8Eunity%E5%90%8C%E6%AD%A5/">3dsMax视口shader与unity同步</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

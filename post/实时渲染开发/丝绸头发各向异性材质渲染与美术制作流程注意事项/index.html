@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 各向异性材质渲染与美术流程注意事项 | 月光下的旅行。 </title>
+  <meta name="description" content="丝绸头发等各向异性材质渲染与美术流程注意事项">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%9D%E7%BB%B8%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >各向异性材质渲染与美术流程注意事项</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2020-07-08T00:00:00Z">July 08, 2020</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+      <a href="/categories/dcc">DCC</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <h2 id="原理">原理</h2>
+<p>丝绸、头发这些各项异性材质，它们的高光部分计算使用的是各向异性方式。当然实时渲染里不可能像离线渲染里那样去积分计算，游戏中大部分都是用切线代替法线来近似计算各向异性高光。</p>
+<p>然后高光的计算方式主要有三种，一个是Kaijya-Kay模型，它主要用在头发高光计算上。</p>
+<p>Kaijya-Kay的高光计算方式：</p>
+<p><img src="/images/%E4%B8%9D%E7%BB%B8%E3%80%81%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9.assets/Image.png" alt="Image"></p>
+<p>它不再使用法线点积半角向量了，而是直接使用切线向量与半角向量的夹角的余弦值作为高光系数。</p>
+<p><img src="/images/%E4%B8%9D%E7%BB%B8%E3%80%81%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9.assets/Image-1604592907560.png" alt="Image"></p>
+<p>于是，当半角向量H与切线方向T夹角在[0,90°]时，按照正弦函数，夹角越小，得到的高光系数越小，然后幂乘后得到的高光值越小，然后当视线在发丝的落点沿着切线方向向发根平移时，H与T的夹角将会变大，高光值将会渐渐增大，从而形成头发顶部高光的感觉。</p>
+<p>当然现在没有头发高光流动的感觉，为了模拟高光流动，它将切线沿着法线方向作偏移。</p>
+<p><img src="/images/%E4%B8%9D%E7%BB%B8%E3%80%81%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9.assets/Image-1604592928759.png" alt="Image"></p>
+<p>也就是这样：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span>half3 <span style="color:#a6e22e">ShiftedTangent</span>(float3 t, float3 n, <span style="color:#66d9ef">float</span> shift) {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> normalize(t <span style="color:#f92672">+</span> shift <span style="color:#f92672">*</span> n);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>然后这个shift值一般采样一个偏移量灰度图：</p>
+<p><img src="/images/%E4%B8%9D%E7%BB%B8%E3%80%81%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9.assets/Image-1604592958781.png" alt="Image"></p>
+<p>这种灰度图可以在PS里用一个白噪声 + v方向的运动模糊生成。</p>
+<p>当前shift值是[0,1]范围，将它作如下处理，使得高光可以随机向上向下流动:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> shift <span style="color:#f92672">=</span> tex2D(shitTex,uv).x <span style="color:#f92672">-</span> <span style="color:#ae81ff">0.5f</span>;
+</span></span></code></pre></div><p>最后是高光计算：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// T 为发丝切线方向，V为视线方向，L为灯光方向，exponent为高光幂指数
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">StrandSpecular</span>(float3 T, float3 V, float3 L, <span style="color:#66d9ef">int</span> exponent)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    float3 H <span style="color:#f92672">=</span> normalize(L <span style="color:#f92672">+</span> V);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> dotTH <span style="color:#f92672">=</span> dot(T, H);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> sinTH <span style="color:#f92672">=</span> sqrt(<span style="color:#ae81ff">1.0</span> <span style="color:#f92672">-</span> dotTH <span style="color:#f92672">*</span> dotTH);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> dirAtten <span style="color:#f92672">=</span> smoothstep(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">0</span>, dotTH);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> dirAtten <span style="color:#f92672">*</span> pow(sinTH, exponent);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>这里的dirAtten主要是处理T与H夹角余弦落在[-1,0]之间，给一个高光值的衰减，处理视角向量与发丝切线接近重合时高光值异常问题。可以把它去掉来做一次比较，发现有方向衰减和没方向衰减的高光差异极大。</p>
+<p>另外高光计算方式可以换成GGX各向异性法线函数，或者是Ward各向异性函数法线函数，它们和Kaijya-Kay类似，只不过Kaijya-Kay为了实现向上向下两层高光偏移，需要计算两次高光：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> shift1 <span style="color:#f92672">=</span> tex2D(shitTex,uv).x <span style="color:#f92672">*</span> _flatshift <span style="color:#f92672">+</span> _SpecShift;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> shift2 <span style="color:#f92672">=</span> tex2D(shitTex,uv).x <span style="color:#f92672">*</span> _flatshift <span style="color:#f92672">+</span> _SpecShift <span style="color:#f92672">+</span> _SpecShift2;
+</span></span><span style="display:flex;"><span>float3 T1 <span style="color:#f92672">=</span> ShiftTangent( tan , Wnormal , shift1);
+</span></span><span style="display:flex;"><span>float3 T2 <span style="color:#f92672">=</span> ShiftTangent( tan , Wnormal , shift2);
+</span></span><span style="display:flex;"><span>float3 spec1 <span style="color:#f92672">=</span> StrandSpecular(T1,...) <span style="color:#f92672">*</span> _SpecColor <span style="color:#f92672">*</span> _AnisoSpecular;
+</span></span><span style="display:flex;"><span>float3 spec2 <span style="color:#f92672">=</span> StrandSpecular(T2,...) <span style="color:#f92672">*</span> _SpecColor2 <span style="color:#f92672">*</span> _AnisoSpecular <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.6</span>;
+</span></span><span style="display:flex;"><span>float3 spec <span style="color:#f92672">=</span> spec1<span style="color:#f92672">+</span>spec2;
+</span></span></code></pre></div><p>这是很耗费性能的，因为使用了幂乘，而且有时候会为了压制高光的强度把幂乘指数调得很高，还算了两次。</p>
+<p>Kaijya-Kay整体的着色器如下，注意它的漫反射着色使用插值的Normal dot Light：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>float4 <span style="color:#a6e22e">HairLighting</span> (float3 tangent, float3 normal, float3 lightVec,
+</span></span><span style="display:flex;"><span>                     float3 viewVec, float2 uv, <span style="color:#66d9ef">float</span> ambOcc)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// shift tangents
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">float</span> shiftTex <span style="color:#f92672">=</span> tex2D(tSpecShift, uv) <span style="color:#f92672">-</span> <span style="color:#ae81ff">0.5</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    float3 t1 <span style="color:#f92672">=</span> ShiftTangent(tangent, normal, primaryShift <span style="color:#f92672">+</span> shiftTex);
+</span></span><span style="display:flex;"><span>    float3 t2 <span style="color:#f92672">=</span> ShiftTangent(tangent, normal, secondaryShift <span style="color:#f92672">+</span> shiftTex);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// diffuse lighting
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    float3 diffuse <span style="color:#f92672">=</span> saturate(lerp(<span style="color:#ae81ff">0.25</span>, <span style="color:#ae81ff">1.0</span>, dot(normal, lightVec)));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// specular lighting
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    float3 specular <span style="color:#f92672">=</span> specularColor1 <span style="color:#f92672">*</span> StrandSpecular(t1, viewVec, lightVec, specExp1);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// add second specular term
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">float</span> specMask <span style="color:#f92672">=</span> tex2D(tSpecMask, uv);
+</span></span><span style="display:flex;"><span>    specular <span style="color:#f92672">+=</span> specularColor2 <span style="color:#f92672">*</span> specMask <span style="color:#f92672">*</span> StrandSpecular(t2, viewVec, lightVec, specExp2);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Final color
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    float4 o;
+</span></span><span style="display:flex;"><span>    o.rgb <span style="color:#f92672">=</span> (diffuse <span style="color:#f92672">+</span> specular) <span style="color:#f92672">*</span> tex2D(tBase, uv) <span style="color:#f92672">*</span> lightColor;
+</span></span><span style="display:flex;"><span>    o.rgb <span style="color:#f92672">*=</span> ambOcc;
+</span></span><span style="display:flex;"><span>    o.a <span style="color:#f92672">=</span> tex2D(tAlpha, uv);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> o;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>相比之下，GGX各向异性比较省性能，它的计算方式直接传入X，Y方向的粗糙度值，高光计算一次算完，而且最重要的是没有幂乘，性能卓越：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">D_GGXaniso</span>( <span style="color:#66d9ef">float</span> RoughnessX,<span style="color:#66d9ef">float</span> RoughnessY,<span style="color:#66d9ef">float</span> NoH,float3 H, float3 X, float3 Y)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> ax <span style="color:#f92672">=</span> RoughnessX <span style="color:#f92672">*</span> RoughnessX;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> ay <span style="color:#f92672">=</span> RoughnessY <span style="color:#f92672">*</span> RoughnessY;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> XoH <span style="color:#f92672">=</span> dot( X, H );
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> YoH <span style="color:#f92672">=</span> dot( Y, H );
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> d <span style="color:#f92672">=</span> XoH<span style="color:#f92672">*</span>XoH <span style="color:#f92672">/</span> (ax<span style="color:#f92672">*</span>ax) <span style="color:#f92672">+</span> YoH<span style="color:#f92672">*</span>YoH <span style="color:#f92672">/</span> (ay<span style="color:#f92672">*</span>ay) <span style="color:#f92672">+</span> NoH<span style="color:#f92672">*</span>NoH;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> <span style="color:#ae81ff">1</span> <span style="color:#f92672">/</span> ( pi <span style="color:#f92672">*</span> ax<span style="color:#f92672">*</span>ay <span style="color:#f92672">*</span> d<span style="color:#f92672">*</span>d );
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>而Ward各向异性函数法线函数，大同小异：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">sqr</span>(<span style="color:#66d9ef">float</span> x) {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> x <span style="color:#f92672">*</span> x;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">WardAnisotropicNormalDistribution</span>(<span style="color:#66d9ef">float</span> anisotropic, <span style="color:#66d9ef">float</span> NdotL, <span style="color:#66d9ef">float</span> NdotV,
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> NdotH, <span style="color:#66d9ef">float</span> HdotX, <span style="color:#66d9ef">float</span> HdotY)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> aspect <span style="color:#f92672">=</span> sqrt(<span style="color:#ae81ff">1.0</span>h <span style="color:#f92672">-</span> anisotropic <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.9</span>h);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> roughnessSqr <span style="color:#f92672">=</span> (<span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> <span style="color:#ae81ff">0.5</span>);
+</span></span><span style="display:flex;"><span>    roughnessSqr <span style="color:#f92672">*=</span> roughnessSqr;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> X <span style="color:#f92672">=</span> roughnessSqr <span style="color:#f92672">/</span> aspect;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> Y <span style="color:#f92672">=</span> roughnessSqr <span style="color:#f92672">*</span> aspect;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> exponent <span style="color:#f92672">=</span> <span style="color:#f92672">-</span>(sqr(HdotX <span style="color:#f92672">/</span> X) <span style="color:#f92672">+</span> sqr(HdotY <span style="color:#f92672">/</span> Y)) <span style="color:#f92672">/</span> sqr(NdotH);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> Distribution <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span> <span style="color:#f92672">/</span> (<span style="color:#ae81ff">4.0</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3.14159265</span> <span style="color:#f92672">*</span> X <span style="color:#f92672">*</span> Y <span style="color:#f92672">*</span> sqrt(NdotL <span style="color:#f92672">*</span> NdotV));
+</span></span><span style="display:flex;"><span>    Distribution <span style="color:#f92672">*=</span> exp(exponent);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> Distribution;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>高光部分算完之后，直接叠加一个漫反射光就行了，使用普通的兰伯特模型就能得到不错的漫反射结果了，然后丝绸渲染往往会有一个色调映射，加一个颜色的lerp来统一最终的色调。</p>
+<p>以上这些基本就是全部的原理。</p>
+<h2 id="美术制作注意事项">美术制作注意事项</h2>
+<p>然后才是最重要的美术制作环节。</p>
+<p>各向异性材质计算使用到了切线和副切线，而切线的方向对应模型的uv的u方向，副切线方向对应模型UV的V方向，切线算法有mikktspace和经典的xNormal等，比较简单的切线与副切线的计算方法如下,来自gamedev论坛的<a href="https://gamedev.stackexchange.com/questions/68612/how-to-compute-tangent-and-bitangent-vectors">回答</a>：</p>
+<p><img src="/images/%E4%B8%9D%E7%BB%B8%E3%80%81%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9.assets/Image-1604593146911.png" alt="Image"></p>
+<p>其中：  <br>
+$$
+E1 = (u1-u0)T + (v1-v0)B</p>
+<p>$$</p>
+<p>$$
+E2 = (u2-u0)T + (v2-v0)B
+$$</p>
+<p>两个等式，两个未知量，因此：</p>
+<pre tabindex="0"><code>| E1x E1y E1z |   | deltaU1 deltaV1 | * | Tx Ty Tz |
+| E2x E2y E2z | = | deltaU2 deltaV2 |   | Bx By Bz |
+</code></pre><p>转化为C++代码:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">Triangle</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">unsigned</span> <span style="color:#66d9ef">short</span>  index[<span style="color:#ae81ff">3</span>];
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">CalculateTangentArray</span>(<span style="color:#66d9ef">long</span> vertexCount, <span style="color:#66d9ef">const</span> Point3D <span style="color:#f92672">*</span>vertex, <span style="color:#66d9ef">const</span> Vector3D <span style="color:#f92672">*</span>normal,
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> Point2D <span style="color:#f92672">*</span>texcoord, <span style="color:#66d9ef">long</span> triangleCount, <span style="color:#66d9ef">const</span> Triangle <span style="color:#f92672">*</span>triangle, Vector4D <span style="color:#f92672">*</span>tangent)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    Vector3D <span style="color:#f92672">*</span>tan1 <span style="color:#f92672">=</span> <span style="color:#66d9ef">new</span> Vector3D[vertexCount <span style="color:#f92672">*</span> <span style="color:#ae81ff">2</span>];
+</span></span><span style="display:flex;"><span>    Vector3D <span style="color:#f92672">*</span>tan2 <span style="color:#f92672">=</span> tan1 <span style="color:#f92672">+</span> vertexCount;
+</span></span><span style="display:flex;"><span>    ZeroMemory(tan1, vertexCount <span style="color:#f92672">*</span> <span style="color:#66d9ef">sizeof</span>(Vector3D) <span style="color:#f92672">*</span> <span style="color:#ae81ff">2</span>);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">long</span> a <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; a <span style="color:#f92672">&lt;</span> triangleCount; a<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">long</span> i1 <span style="color:#f92672">=</span> triangle<span style="color:#f92672">-&gt;</span>index[<span style="color:#ae81ff">0</span>];
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">long</span> i2 <span style="color:#f92672">=</span> triangle<span style="color:#f92672">-&gt;</span>index[<span style="color:#ae81ff">1</span>];
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">long</span> i3 <span style="color:#f92672">=</span> triangle<span style="color:#f92672">-&gt;</span>index[<span style="color:#ae81ff">2</span>];
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> Point3D<span style="color:#f92672">&amp;</span> v1 <span style="color:#f92672">=</span> vertex[i1];
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> Point3D<span style="color:#f92672">&amp;</span> v2 <span style="color:#f92672">=</span> vertex[i2];
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> Point3D<span style="color:#f92672">&amp;</span> v3 <span style="color:#f92672">=</span> vertex[i3];
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> Point2D<span style="color:#f92672">&amp;</span> w1 <span style="color:#f92672">=</span> texcoord[i1];
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> Point2D<span style="color:#f92672">&amp;</span> w2 <span style="color:#f92672">=</span> texcoord[i2];
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> Point2D<span style="color:#f92672">&amp;</span> w3 <span style="color:#f92672">=</span> texcoord[i3];
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> x1 <span style="color:#f92672">=</span> v2.x <span style="color:#f92672">-</span> v1.x;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> x2 <span style="color:#f92672">=</span> v3.x <span style="color:#f92672">-</span> v1.x;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> y1 <span style="color:#f92672">=</span> v2.y <span style="color:#f92672">-</span> v1.y;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> y2 <span style="color:#f92672">=</span> v3.y <span style="color:#f92672">-</span> v1.y;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> z1 <span style="color:#f92672">=</span> v2.z <span style="color:#f92672">-</span> v1.z;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> z2 <span style="color:#f92672">=</span> v3.z <span style="color:#f92672">-</span> v1.z;
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> s1 <span style="color:#f92672">=</span> w2.x <span style="color:#f92672">-</span> w1.x;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> s2 <span style="color:#f92672">=</span> w3.x <span style="color:#f92672">-</span> w1.x;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> t1 <span style="color:#f92672">=</span> w2.y <span style="color:#f92672">-</span> w1.y;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> t2 <span style="color:#f92672">=</span> w3.y <span style="color:#f92672">-</span> w1.y;
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> r <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0F</span> <span style="color:#f92672">/</span> (s1 <span style="color:#f92672">*</span> t2 <span style="color:#f92672">-</span> s2 <span style="color:#f92672">*</span> t1);
+</span></span><span style="display:flex;"><span>        Vector3D sdir((t2 <span style="color:#f92672">*</span> x1 <span style="color:#f92672">-</span> t1 <span style="color:#f92672">*</span> x2) <span style="color:#f92672">*</span> r, (t2 <span style="color:#f92672">*</span> y1 <span style="color:#f92672">-</span> t1 <span style="color:#f92672">*</span> y2) <span style="color:#f92672">*</span> r,
+</span></span><span style="display:flex;"><span>                (t2 <span style="color:#f92672">*</span> z1 <span style="color:#f92672">-</span> t1 <span style="color:#f92672">*</span> z2) <span style="color:#f92672">*</span> r);
+</span></span><span style="display:flex;"><span>        Vector3D tdir((s1 <span style="color:#f92672">*</span> x2 <span style="color:#f92672">-</span> s2 <span style="color:#f92672">*</span> x1) <span style="color:#f92672">*</span> r, (s1 <span style="color:#f92672">*</span> y2 <span style="color:#f92672">-</span> s2 <span style="color:#f92672">*</span> y1) <span style="color:#f92672">*</span> r,
+</span></span><span style="display:flex;"><span>                (s1 <span style="color:#f92672">*</span> z2 <span style="color:#f92672">-</span> s2 <span style="color:#f92672">*</span> z1) <span style="color:#f92672">*</span> r);
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        tan1[i1] <span style="color:#f92672">+=</span> sdir;
+</span></span><span style="display:flex;"><span>        tan1[i2] <span style="color:#f92672">+=</span> sdir;
+</span></span><span style="display:flex;"><span>        tan1[i3] <span style="color:#f92672">+=</span> sdir;
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        tan2[i1] <span style="color:#f92672">+=</span> tdir;
+</span></span><span style="display:flex;"><span>        tan2[i2] <span style="color:#f92672">+=</span> tdir;
+</span></span><span style="display:flex;"><span>        tan2[i3] <span style="color:#f92672">+=</span> tdir;
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        triangle<span style="color:#f92672">++</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">long</span> a <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; a <span style="color:#f92672">&lt;</span> vertexCount; a<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> Vector3D<span style="color:#f92672">&amp;</span> n <span style="color:#f92672">=</span> normal[a];
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> Vector3D<span style="color:#f92672">&amp;</span> t <span style="color:#f92672">=</span> tan1[a];
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// Gram-Schmidt orthogonalize
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        tangent[a] <span style="color:#f92672">=</span> (t <span style="color:#f92672">-</span> n <span style="color:#f92672">*</span> Dot(n, t)).Normalize();
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// Calculate handedness
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        tangent[a].w <span style="color:#f92672">=</span> (Dot(Cross(n, t), tan2[a]) <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">0.0F</span>) <span style="color:#f92672">?</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0F</span> <span style="color:#f92672">:</span> <span style="color:#ae81ff">1.0F</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">delete</span>[] tan1;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>总结切线/副切线的主要计算步骤如下：</p>
+<ol>
+<li>遍历所有三角形顶点，每个顶点算一次切线t1 和副切线t2，然后累加存储起来。</li>
+<li>Gram-Schmidt方法构造render space（local space）的Tangent。</li>
+<li>叉积顶点normal，得到的结果再点积副切线t2，判断符号w。</li>
+</ol>
+<p>当然如果一个顶点是UV镜像分界上的点，那么它会分裂成两个点，分别存储w = -1 ，+1，然后传入顶点着色器。</p>
+<p>那么知道了切线和副切线的计算方式后，首先要明确一点：模型uv的切线方向(u)是否为头发发丝生长方向？如果是U方向发丝，那么直接使用上述方式计算就好了。</p>
+<p>美术在制作模型的时候，为了方便往往发丝的UV是按V向展开的，这时候，头发生长方向与副切线方向相同，计算高光的时候，使用的应该就是副切线来计算高光。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#75715e">// 按U向生长
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>half3 T <span style="color:#f92672">=</span> normalize(s.tangent_input); <span style="color:#75715e">// 注意光栅化为线性插值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 按V向生长
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>half3 T <span style="color:#f92672">=</span> <span style="color:#f92672">-</span>normalize(cross( s.Normal, s.tangent_input));
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 计算高光
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>StrandSpecular(T,...);
+</span></span></code></pre></div><p>美术往往会为了方便，在制作模型的时候使用镜像UV，不过没关系，无论是按照U镜像，还是V镜像，它们都会导致切线叉积副切线后得到的法线与顶点法线的点积结果分别为-1，+1，而在计算切线的时候，根据切线与副切线叉积后与法线的点积结果的符号，决定存入模型顶点的tangent.w = -1 还是 +1，那么在构建TBN矩阵的时候，乘上这个，它将根据镜像uv与否分别构建左右手坐标系：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span>float3 world_tangent <span style="color:#f92672">=</span> cross(world_normal,world_tangent) <span style="color:#f92672">*</span> vertex.tangent.w;
+</span></span></code></pre></div><p>在UE4中，在Custom节点，生成的函数里传入的Parameters参数结构体中，有一个UnMirrored值，它等同于Unity的tangent.w。   如果不愿意让UV严格沿着U或V方向排布，那么一般会绘制一张切线空间的切线图作为发丝切线的方向控制，计算的时候直接采样这个切线图的切线，然后再从切线空间中转换到世界空间下，再参与高光计算。</p>
+<p>如果顶点中存了副切线（比如存储在顶点色中），那么也可以将切线空间采样到的向量转换到local空间（渲染空间）下，再根据世界空间法线用Gram-Schmidt方式转化为世界空间下切线，然后再构建一个TBN矩阵：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span>vector_localspace <span style="color:#f92672">=</span>   vector_tangentspace.x <span style="color:#f92672">*</span> vertex.Tangent <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>                        vector_tangentspace.y <span style="color:#f92672">*</span> vertex.Bitangent <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>                        vector_tangentspace.z <span style="color:#f92672">*</span> vertex.Normal;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>vector_worldspace <span style="color:#f92672">=</span> vector_localspace <span style="color:#f92672">-</span> world_normal<span style="color:#f92672">*</span>dot(vector_localspace, world_normal);
+</span></span><span style="display:flex;"><span>vector_worldspace <span style="color:#f92672">=</span> normalize(vector_worldspace);
+</span></span><span style="display:flex;"><span>float3 binormal <span style="color:#f92672">=</span> cross(normal_world,vector_)
+</span></span></code></pre></div><p>当然，对于按V方向镜像的模型，拿到了切线空间切线图后，也需要转化为副切线来参与高光运算：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span>tangent_input <span style="color:#f92672">=</span> UnpackNormal( tex2D(_CombTex, IN.uv_MainTex));
+</span></span><span style="display:flex;"><span><span style="color:#75715e">//...
+</span></span></span></code></pre></div><p>转化的时候需要注意，因为UV镜像，特别是V镜像，在镜像接缝处，如果不对切线做特殊处理，绝对会形成一个明显的接缝。</p>
+<p>切线特殊处理是什么呢？就我探索的，找到接缝处，将它的切线方向摆成直线，这样，左右手系叉积出来的副切线绝对重合。</p>
+<p>那么如何找到接缝处呢，直接遍历所有的w = -1顶点，然后根据每个w = -1的顶点，遍历所有 w = 1的顶点，如果在w = 1的顶点中，找到对称点，那么它就不是接缝点，否则它就是接缝点，然后摆直接缝点的切线。</p>
+<p>如何摆直？我根据上述公式推测，当v镜像时，如果不镜像，那么tangent需要乘上（1，-1，-1），w保持不变。</p>
+<h2 id="头发的半透明排序混合">头发的半透明排序混合</h2>
+<p>在前面提到的GDC PPT分享中，里面还给出了头发近似深度方式。</p>
+<ol>
+<li>为了正确的进行alpha-blending，按照从后向前顺序进行绘制。</li>
+<li>头发绘制顺序也是由内向外。</li>
+<li>解决方法是预先计算一个静态index buffer。</li>
+<li>排序连接的组件(发丝贴片)而不是单个三角形</li>
+</ol>
+<p><img src="/images/%E4%B8%9D%E7%BB%B8%E3%80%81%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9.assets/Image-1604593419284.png" alt="Image"></p>
+<p>实现思路也比较简单，先按照头发贴片的排序顺序，从里到外绘制。在Unity中可以直接根据贴片里外顺序建立一个静态的DrawIndex数组，然后在CommandBuffer中手动调用按从里到外顺序渲染即可，UE4中比较麻烦，事实上我还没在UE4中实现过。</p>
+<p><img src="/images/%E4%B8%9D%E7%BB%B8%E3%80%81%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9.assets/Image-1604593431337.png" alt="Image"></p>
+<p>PPT给出的最终的渲染顺序如下：</p>
+<ol>
+<li>Pass 1 - prime Z buffer启用alpha test，仅仅通过不透明的像素Cull Off启用Z writes, 设置Z test为Lessban color buffer writespixel shader 只写入alpha值</li>
+<li>Pass 2 - 不透明部分Cull Back Off禁用Z writes, 设置Z test为Equal</li>
+<li>Pass 3 - 透明背面部分Cull Front禁用Z writes, 设置Z test为Less</li>
+<li>Pass 4 -透明前面部分Cull Back启用Z writes, 设置Z test为Less</li>
+</ol>
+<p><strong>与常规渲染比较，先绘制一遍简单的Prime Z buffer，把头发不透明部分的深度都写入进去，然后在第二遍Pass中绘制不透明的部分，仅当Z Depth等于最小值时才执行绘制pixel shader，并且第二部分Pass没有alpha test，执行了一次Early-Z，不通过Z test的片元着色器没有执行，大大减少了Overdraw。</strong></p>
+<p>然后透明部分就是从内到外的绘制了，注意绘制背面的时候不用写入Z，因为背面的Z永远是大于前面的，不如关闭写入节约性能，但开启Z test，然后可以检测是否被不透明物体遮挡住了，被遮住了直接不画了，而且这部分也没有alpha test，执行Early-Z。</p>
+<p>绘制头发前面的时候开启Z Write，将前面作为头发的最终深度，这个Pass也有Early-Z。    实际项目中，如果头发的背面不需要显示，比如远处的人物，可以直接关闭Pass3，省下性能。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/dcc">DCC</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/dcc/3dsmax%E8%A7%86%E5%8F%A3shader%E4%B8%8Eunity%E5%90%8C%E6%AD%A5/">3dsMax视口shader与unity同步</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0/">简单翻页效果</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

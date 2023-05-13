@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> Vulkan TAA实现与细节 | 月光下的旅行。 </title>
+  <meta name="description" content="Vulkan TAA实现与细节">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >Vulkan TAA实现与细节</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-11-28T00:00:00Z">November 28, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+      <a href="/categories/flower">Flower</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>一周时间过去后，TAA终于集成到了引擎中。</p>
+<p><img src="/images/VulkanTAA%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82.assets/TAACompare.png" alt="Image"></p>
+<p>TAA On:</p>
+<p><img src="/images/VulkanTAA%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82.assets/TAA.png" alt="Image"></p>
+<p>TAA 的抗锯齿效果基本是最好的。</p>
+<p>有关TAA的原理已经有很多的GDC分享PPT了，这里主要分享一下 Vulkan 中实现 TAA 的细节和注意点，源码可以直接看我的仓库，这里只会截一部分用作说明：</p>
+<p>主要要点如下：</p>
+<ol>
+<li>Velocity Buffer的写入与读取。</li>
+<li>解决TAA Ghost问题的办法。</li>
+<li>TAA 模糊问题解决</li>
+<li>解决TAA Flickering问题的办法。</li>
+</ol>
+<h2 id="velocity-buffer的写入与读取">Velocity Buffer的写入与读取</h2>
+<p>velocity buffer表示一个物体在两帧之间的屏幕空间位移，写入速度时，<strong>不应该考虑TAA Dither</strong>。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// 当前帧的Jitter矩阵
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>mat4 curJitterMat <span style="color:#f92672">=</span> mat4(<span style="color:#ae81ff">1.0f</span>);
+</span></span><span style="display:flex;"><span>curJitterMat[<span style="color:#ae81ff">3</span>][<span style="color:#ae81ff">0</span>] <span style="color:#f92672">+=</span> frameData.jitterData.x; <span style="color:#75715e">// .xy 为当前帧的Jitter数据
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>curJitterMat[<span style="color:#ae81ff">3</span>][<span style="color:#ae81ff">1</span>] <span style="color:#f92672">+=</span> frameData.jitterData.y;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>outCurPosNoJitter <span style="color:#f92672">=</span>  frameData.camViewProj <span style="color:#f92672">*</span> worldPos; 
+</span></span><span style="display:flex;"><span>gl_Position <span style="color:#f92672">=</span> curJitterMat <span style="color:#f92672">*</span> outCurPosNoJitter; 
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>outPrevPosNoJitter <span style="color:#f92672">=</span> frameData.camViewProjLast <span style="color:#f92672">*</span> vec4(worldPrevPos, <span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>vec2 curPosNDC <span style="color:#f92672">=</span> outCurPosNoJitter.xy  <span style="color:#f92672">/</span>  outCurPosNoJitter.w;
+</span></span><span style="display:flex;"><span>vec2 prePosNDC <span style="color:#f92672">=</span> outPrevPosNoJitter.xy <span style="color:#f92672">/</span> outPrevPosNoJitter.w;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>outVelocity <span style="color:#f92672">=</span> (curPosNDC <span style="color:#f92672">-</span> prePosNDC) <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.5f</span>;
+</span></span><span style="display:flex;"><span>outVelocity.y <span style="color:#f92672">*=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>; <span style="color:#75715e">// vulkan
+</span></span></span></code></pre></div><p>我的做法是把jitter数据传入到顶点着色器中，在正常的透视变换完成后，再来一次Jitter变换作为最终的光栅化顶点数据。</p>
+<p>outVelocity.y *= -1.0f 是因为我在Gbuffer Pass 的Viewport中翻转了Y轴，这样，Vulkan就可以和DX12使用相同的坐标系了。</p>
+<p>速度缓冲读取时，在一个3x3范围的寻找最近深度的点并取它的velocity作为输出：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>vec2 <span style="color:#a6e22e">getClosestVelocity</span>(in vec2 uv, in vec2 texelSize, out <span style="color:#66d9ef">bool</span> isSkyPixel)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    vec2 velocity;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> closestDepth <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0f</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> y <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>; y <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1</span>; <span style="color:#f92672">++</span>y)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> x <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>; x <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1</span>; <span style="color:#f92672">++</span>x)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">const</span> vec2 st <span style="color:#f92672">=</span> uv <span style="color:#f92672">+</span> vec2(x, y) <span style="color:#f92672">*</span> texelSize;
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> depth <span style="color:#f92672">=</span> texture(inDepth, st).x;
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (depth <span style="color:#f92672">&gt;=</span> closestDepth) <span style="color:#75715e">// now always reverse z
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            {
+</span></span><span style="display:flex;"><span>                velocity <span style="color:#f92672">=</span> texture(inVelocity, st).xy;
+</span></span><span style="display:flex;"><span>                closestDepth <span style="color:#f92672">=</span> depth;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    isSkyPixel <span style="color:#f92672">=</span> (closestDepth <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0.0f</span>); <span style="color:#75715e">// isSkyPixel 指示了天空背景，用于后续clamp aabb 范围的计算
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">return</span> velocity;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><h2 id="解决taa-ghost">解决TAA Ghost</h2>
+<p><img src="/images/VulkanTAA%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82.assets/Ghost.png" alt="Image"></p>
+<p>相机移动时，一些垃圾历史像素也会参与到画面插值，导致出现严重的拖尾现象。</p>
+<p>解决办法是收集当前像素周围的数据，根据一些规则评估它们的数据差异，如果颜色差异过大或者亮度差异过大，则可以判定该像素为垃圾数据舍弃掉。（ClampHistory）</p>
+<p>神秘海域4中的TAA实现利用groupshared memory, 首先对整个画面做一次模糊滤波处理，再进行ClampHistory，这样可以大大增加Clamp时的准确性，（同时也便于减少TAA Flicking）：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">#define GROUP_SIZE  8
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#define TILE_DIM    (2 * RADIUS + GROUP_SIZE)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#define RADIUS      1
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>shared vec3 Tile[TILE_DIM <span style="color:#f92672">*</span> TILE_DIM];
+</span></span><span style="display:flex;"><span>layout (local_size_x <span style="color:#f92672">=</span> GROUP_SIZE, local_size_y <span style="color:#f92672">=</span> GROUP_SIZE, local_size_z <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>) in;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">main</span>()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">//...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Gather Current Pixel (Blur First)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> (gl_LocalInvocationIndex <span style="color:#f92672">&lt;</span> TILE_DIM <span style="color:#f92672">*</span> TILE_DIM <span style="color:#f92672">/</span> <span style="color:#ae81ff">4</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">const</span> vec2 uv1 <span style="color:#f92672">=</span> (coord1 <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5f</span>) <span style="color:#f92672">*</span> texelSize;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> vec2 uv2 <span style="color:#f92672">=</span> (coord2 <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5f</span>) <span style="color:#f92672">*</span> texelSize;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> vec2 uv3 <span style="color:#f92672">=</span> (coord3 <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5f</span>) <span style="color:#f92672">*</span> texelSize;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> vec2 uv4 <span style="color:#f92672">=</span> (coord4 <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5f</span>) <span style="color:#f92672">*</span> texelSize;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> vec3 color0 <span style="color:#f92672">=</span> texture(inHdrColor, uv1).xyz;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> vec3 color1 <span style="color:#f92672">=</span> texture(inHdrColor, uv2).xyz;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> vec3 color2 <span style="color:#f92672">=</span> texture(inHdrColor, uv3).xyz;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> vec3 color3 <span style="color:#f92672">=</span> texture(inHdrColor, uv4).xyz;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        Tile[gl_LocalInvocationIndex]                               <span style="color:#f92672">=</span> color0;
+</span></span><span style="display:flex;"><span>        Tile[gl_LocalInvocationIndex <span style="color:#f92672">+</span> TILE_DIM <span style="color:#f92672">*</span> TILE_DIM <span style="color:#f92672">/</span> <span style="color:#ae81ff">4</span>]     <span style="color:#f92672">=</span> color1;
+</span></span><span style="display:flex;"><span>        Tile[gl_LocalInvocationIndex <span style="color:#f92672">+</span> TILE_DIM <span style="color:#f92672">*</span> TILE_DIM <span style="color:#f92672">/</span> <span style="color:#ae81ff">2</span>]     <span style="color:#f92672">=</span> color2;
+</span></span><span style="display:flex;"><span>        Tile[gl_LocalInvocationIndex <span style="color:#f92672">+</span> TILE_DIM <span style="color:#f92672">*</span> TILE_DIM <span style="color:#f92672">*</span> <span style="color:#ae81ff">3</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">4</span>] <span style="color:#f92672">=</span> color3;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    groupMemoryBarrier();
+</span></span><span style="display:flex;"><span>    barrier();
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">//...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Start Evaluate History.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">float</span> wsum <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0f</span>;
+</span></span><span style="display:flex;"><span>    vec3 vsum <span style="color:#f92672">=</span> vec3(<span style="color:#ae81ff">0.0f</span>, <span style="color:#ae81ff">0.0f</span>, <span style="color:#ae81ff">0.0f</span>);
+</span></span><span style="display:flex;"><span>    vec3 vsum2 <span style="color:#f92672">=</span> vec3(<span style="color:#ae81ff">0.0f</span>, <span style="color:#ae81ff">0.0f</span>, <span style="color:#ae81ff">0.0f</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">float</span> y <span style="color:#f92672">=</span> <span style="color:#f92672">-</span>RADIUS; y <span style="color:#f92672">&lt;=</span> RADIUS; <span style="color:#f92672">++</span>y)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">float</span> x <span style="color:#f92672">=</span> <span style="color:#f92672">-</span>RADIUS; x <span style="color:#f92672">&lt;=</span> RADIUS; <span style="color:#f92672">++</span>x)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">const</span> vec3 neigh <span style="color:#f92672">=</span> Tap(tilePos <span style="color:#f92672">+</span> vec2(x, y), texelSize);
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> w <span style="color:#f92672">=</span> exp(<span style="color:#f92672">-</span><span style="color:#ae81ff">3.0f</span> <span style="color:#f92672">*</span> (x <span style="color:#f92672">*</span> x <span style="color:#f92672">+</span> y <span style="color:#f92672">*</span> y) <span style="color:#f92672">/</span> ((RADIUS <span style="color:#f92672">+</span> <span style="color:#ae81ff">1.0f</span>) <span style="color:#f92672">*</span> (RADIUS <span style="color:#f92672">+</span> <span style="color:#ae81ff">1.0f</span>)));
+</span></span><span style="display:flex;"><span>            vsum2 <span style="color:#f92672">+=</span> neigh <span style="color:#f92672">*</span> neigh <span style="color:#f92672">*</span> w;
+</span></span><span style="display:flex;"><span>            vsum <span style="color:#f92672">+=</span> neigh <span style="color:#f92672">*</span> w;
+</span></span><span style="display:flex;"><span>            wsum <span style="color:#f92672">+=</span> w;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// NVidia variance clip.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">const</span> vec3 ex <span style="color:#f92672">=</span> vsum <span style="color:#f92672">/</span> wsum;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> vec3 ex2 <span style="color:#f92672">=</span> vsum2 <span style="color:#f92672">/</span> wsum;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> vec3 dev <span style="color:#f92672">=</span> sqrt(max(ex2 <span style="color:#f92672">-</span> ex <span style="color:#f92672">*</span> ex, <span style="color:#ae81ff">0.0f</span>));
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">bool</span> isSkyPixel;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> vec2 velocity <span style="color:#f92672">=</span> getClosestVelocity(uv, texelSize, isSkyPixel);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> boxSize <span style="color:#f92672">=</span> mix(<span style="color:#ae81ff">0.5f</span>, <span style="color:#ae81ff">2.5f</span>, isSkyPixel <span style="color:#f92672">?</span> <span style="color:#ae81ff">0.0f</span> <span style="color:#f92672">:</span> smoothstep(<span style="color:#ae81ff">0.02f</span>, <span style="color:#ae81ff">0.0f</span>, length(velocity)));
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> vec3 nmin <span style="color:#f92672">=</span> ex <span style="color:#f92672">-</span> dev <span style="color:#f92672">*</span> boxSize;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> vec3 nmax <span style="color:#f92672">=</span> ex <span style="color:#f92672">+</span> dev <span style="color:#f92672">*</span> boxSize;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> vec3 history <span style="color:#f92672">=</span> sampleHistory(uv <span style="color:#f92672">-</span> velocity, texelSize);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> vec3 clampedHistory <span style="color:#f92672">=</span> clamp(history, nmin, nmax);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>clamp 历史像素时，使用Nvidia的variance clip算法可以提高clamp的准确度，使得通过测试的历史像素基本接近当前帧的像素。（另外UE4建议在Ycocg空间下做，但我测试和直接在RGB下做的效果似乎没有差别）。</p>
+<h2 id="taa-flickering">TAA Flickering</h2>
+<p>我把它分为静态时Flicking和动态Flicking。</p>
+<p><strong>首先一定要把HistoryBuffer的采样器设为Billinear。</strong></p>
+<p>静态时Flicking超难解决。</p>
+<p>理论上来说，使用ClampHistory必定会剔除掉次像素抖动时出现的差异颜色的情况。但实际上我们需要这部分颜色，它又被剔除掉了，导致最终TAA累积时没办法累加上这部分值，就会出现闪烁现象。</p>
+<p>减少混合时的权重值可以显著减低Flicker，但不能贪多，一多就会模糊了。</p>
+<p>我的做法是，在相机停止移动后，计算停止移动的帧数，算出一个cameraStopFactor，之后，在着色器中对静态的情况进行判断，如果为静帧则使用cameraStopFactor计算一个过渡值，用来缩减抖动的大小。</p>
+<p>这样，在相机从移动中到停止移动后，flicker程度会慢慢减少，在画面中显示就是噪点逐渐变少。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">bool</span> bStatic <span style="color:#f92672">=</span> lenVelocity <span style="color:#f92672">&lt;</span> adoptVelocityDiff <span style="color:#f92672">&amp;&amp;</span> <span style="color:#f92672">!</span>isSkyPixel <span style="color:#f92672">&amp;&amp;</span> depthDiffH <span style="color:#f92672">&lt;</span> adoptDepthDiff;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">if</span>(bStatic)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> cameraStop <span style="color:#f92672">=</span> pushConstants.cameraStopFactor;
+</span></span><span style="display:flex;"><span>    cameraStop <span style="color:#f92672">=</span> smoothstep(<span style="color:#ae81ff">0.0f</span>,<span style="color:#ae81ff">1.0f</span>,cameraStop);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> MinBlendFactor <span style="color:#f92672">=</span> max(<span style="color:#ae81ff">1.0f</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">16.0f</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.15f</span>, blendFactor <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.15f</span>);
+</span></span><span style="display:flex;"><span>    blendFactor <span style="color:#f92672">=</span> mix(blendFactor, MinBlendFactor, cameraStop);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>动态时的Flicking。</p>
+<p>因为TAA一般在Tonemapper Pass前， HDR环境下，在远处的物体（特别是小于一个像素的），TAA Jitter很容易就会使得当前帧的渲染结果和历史帧的亮度差异过大被ClampHistory排除掉，导致两帧之间亮度差异极大形成Flicking。</p>
+<p>在UE4.26.2中，为了解决Flicking，在Depth采样和SceneColor采样时都做了一定的（3x3的模糊核）模糊处理，确保ClampHistory时的采样数据尽可能是平滑的,这在一定程度上可以缓解TAA的Flicking问题。</p>
+<p>更好的做法是在ClampHistory前就对SceneColor做一次Tonemapper，将HDR范围映射到LDR（0 - 1.0），这样颜色/亮度差距会进一步减少，ClampHistory的结果也相对的准确，在TAA解析完后再逆Tonemapper回HDR。</p>
+<p>但无论是ToneMapper还是Blur处理，最终都会导致画面变模糊。</p>
+<h2 id="taa-模糊问题">TAA 模糊问题</h2>
+<p>我把它分为静态时模糊和动态时模糊：</p>
+<p>静态时模糊容易解决，我们采样HistoryBuffer时，用更好的采样器（CatmullRom）。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>vec3 <span style="color:#a6e22e">sampleHistoryCatmullRom</span>(in vec2 uv, in vec2 texelSize)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    vec2 samplePos <span style="color:#f92672">=</span> uv <span style="color:#f92672">/</span> texelSize;
+</span></span><span style="display:flex;"><span>    vec2 texPos1 <span style="color:#f92672">=</span> floor(samplePos <span style="color:#f92672">-</span> <span style="color:#ae81ff">0.5f</span>) <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5f</span>;
+</span></span><span style="display:flex;"><span>    vec2 f <span style="color:#f92672">=</span> samplePos <span style="color:#f92672">-</span> texPos1;
+</span></span><span style="display:flex;"><span>    vec2 w0 <span style="color:#f92672">=</span> f <span style="color:#f92672">*</span> (<span style="color:#f92672">-</span><span style="color:#ae81ff">0.5f</span> <span style="color:#f92672">+</span> f <span style="color:#f92672">*</span> (<span style="color:#ae81ff">1.0f</span> <span style="color:#f92672">-</span> <span style="color:#ae81ff">0.5f</span> <span style="color:#f92672">*</span> f));
+</span></span><span style="display:flex;"><span>    vec2 w1 <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span> <span style="color:#f92672">+</span> f <span style="color:#f92672">*</span> f <span style="color:#f92672">*</span> (<span style="color:#f92672">-</span><span style="color:#ae81ff">2.5f</span> <span style="color:#f92672">+</span> <span style="color:#ae81ff">1.5f</span> <span style="color:#f92672">*</span> f);
+</span></span><span style="display:flex;"><span>    vec2 w2 <span style="color:#f92672">=</span> f <span style="color:#f92672">*</span> (<span style="color:#ae81ff">0.5f</span> <span style="color:#f92672">+</span> f <span style="color:#f92672">*</span> (<span style="color:#ae81ff">2.0f</span> <span style="color:#f92672">-</span> <span style="color:#ae81ff">1.5f</span> <span style="color:#f92672">*</span> f));
+</span></span><span style="display:flex;"><span>    vec2 w3 <span style="color:#f92672">=</span> f <span style="color:#f92672">*</span> f <span style="color:#f92672">*</span> (<span style="color:#f92672">-</span><span style="color:#ae81ff">0.5f</span> <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5f</span> <span style="color:#f92672">*</span> f);
+</span></span><span style="display:flex;"><span>    vec2 w12 <span style="color:#f92672">=</span> w1 <span style="color:#f92672">+</span> w2;
+</span></span><span style="display:flex;"><span>    vec2 offset12 <span style="color:#f92672">=</span> w2 <span style="color:#f92672">/</span> (w1 <span style="color:#f92672">+</span> w2);
+</span></span><span style="display:flex;"><span>    vec2 texPos0 <span style="color:#f92672">=</span> texPos1 <span style="color:#f92672">-</span> <span style="color:#ae81ff">1.0f</span>;
+</span></span><span style="display:flex;"><span>    vec2 texPos3 <span style="color:#f92672">=</span> texPos1 <span style="color:#f92672">+</span> <span style="color:#ae81ff">2.0f</span>;
+</span></span><span style="display:flex;"><span>    vec2 texPos12 <span style="color:#f92672">=</span> texPos1 <span style="color:#f92672">+</span> offset12;
+</span></span><span style="display:flex;"><span>    texPos0 <span style="color:#f92672">*=</span> texelSize;
+</span></span><span style="display:flex;"><span>    texPos3 <span style="color:#f92672">*=</span> texelSize;
+</span></span><span style="display:flex;"><span>    texPos12 <span style="color:#f92672">*=</span> texelSize;
+</span></span><span style="display:flex;"><span>    vec3 result <span style="color:#f92672">=</span> vec3(<span style="color:#ae81ff">0.0f</span>, <span style="color:#ae81ff">0.0f</span>, <span style="color:#ae81ff">0.0f</span>);
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> texture(inHistory, vec2(texPos0.x, texPos0.y)).xyz <span style="color:#f92672">*</span> w0.x <span style="color:#f92672">*</span> w0.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> texture(inHistory, vec2(texPos12.x, texPos0.y)).xyz <span style="color:#f92672">*</span> w12.x <span style="color:#f92672">*</span> w0.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> texture(inHistory, vec2(texPos3.x, texPos0.y)).xyz <span style="color:#f92672">*</span> w3.x <span style="color:#f92672">*</span> w0.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> texture(inHistory, vec2(texPos0.x, texPos12.y)).xyz <span style="color:#f92672">*</span> w0.x <span style="color:#f92672">*</span> w12.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> texture(inHistory, vec2(texPos12.x, texPos12.y)).xyz <span style="color:#f92672">*</span> w12.x <span style="color:#f92672">*</span> w12.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> texture(inHistory, vec2(texPos3.x, texPos12.y)).xyz <span style="color:#f92672">*</span> w3.x <span style="color:#f92672">*</span> w12.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> texture(inHistory, vec2(texPos0.x, texPos3.y)).xyz <span style="color:#f92672">*</span> w0.x <span style="color:#f92672">*</span> w3.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> texture(inHistory, vec2(texPos12.x, texPos3.y)).xyz <span style="color:#f92672">*</span> w12.x <span style="color:#f92672">*</span> w3.y;
+</span></span><span style="display:flex;"><span>    result <span style="color:#f92672">+=</span> texture(inHistory, vec2(texPos3.x, texPos3.y)).xyz <span style="color:#f92672">*</span> w3.x <span style="color:#f92672">*</span> w3.y;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> max(result, <span style="color:#ae81ff">0.0f</span>);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>对于动态时模糊，原因在于深度不同的物体在相机移动时的velocity不同，离相机更远的物体，在移动时的velocity会更小，ClampHistory的结果基本都是Pass，导致该像素周围的一圈像素都被统计进去了，强行做了一圈Blur。</p>
+<p>见下图：做了blendFactor计算和没做blendFactor计算的区别：</p>
+<p><img src="/images/VulkanTAA%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82.assets/image-20211128231059911.png" alt="Image"></p>
+<p>解决办法是给mix factor加入深度与速度的考虑：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// note: use velocity * linear depth as blend factor to solve blur problem when moving.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">float</span> blendFactor <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span>;
+</span></span><span style="display:flex;"><span>    {   
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> threshold   <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.5f</span>;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> base        <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.5f</span>;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> gather      <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.1666</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> depth             <span style="color:#f92672">=</span> getLinearDepth(uv);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> texel_vel_mag     <span style="color:#f92672">=</span> length(velocity <span style="color:#f92672">*</span> vec2(dims.xy)) <span style="color:#f92672">*</span> depth;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> subpixel_motion   <span style="color:#f92672">=</span> clamp(threshold <span style="color:#f92672">/</span> (texel_vel_mag <span style="color:#f92672">+</span> FLT_MIN), <span style="color:#ae81ff">0.0f</span>, <span style="color:#ae81ff">1.0f</span>);
+</span></span><span style="display:flex;"><span>        blendFactor <span style="color:#f92672">*=</span> texel_vel_mag <span style="color:#f92672">*</span> base <span style="color:#f92672">+</span> subpixel_motion <span style="color:#f92672">*</span> gather;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        vec3 color_history <span style="color:#f92672">=</span> clampedHistory;
+</span></span><span style="display:flex;"><span>        vec3 color_current <span style="color:#f92672">=</span> center;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> luminance_history     <span style="color:#f92672">=</span> luminance(color_history);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> luminance_current     <span style="color:#f92672">=</span> luminance(color_current);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> unbiased_difference   <span style="color:#f92672">=</span> abs(luminance_current <span style="color:#f92672">-</span> luminance_history) <span style="color:#f92672">/</span> ((max(luminance_current, luminance_history) <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.3</span>));
+</span></span><span style="display:flex;"><span>        blendFactor <span style="color:#f92672">*=</span> <span style="color:#ae81ff">1.0</span> <span style="color:#f92672">-</span> unbiased_difference;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// Clamp
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        blendFactor <span style="color:#f92672">=</span> clamp(blendFactor, g_taa_blend_min, g_taa_blend_max);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// vec3 result = mix(clampedHistory, color, 1.0f / 16.0f);
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    vec3 result <span style="color:#f92672">=</span> mix(clampedHistory, color, blendFactor);
+</span></span></code></pre></div>
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+        <a href="/tags/flower">Flower</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/">关于Vulkan渲染画面数据杂乱但Renderdoc下正常问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/">Vulkan异步队列与异步纹理上传</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/">Vulkan实现Sample Distribution Shadow Maps</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/">Vulkan CascadeShadowMap中的常见问题与解决方案</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/">VkWriteDescriptorSet内存堆释放问题</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

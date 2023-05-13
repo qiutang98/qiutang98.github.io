@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> Vulkan异步队列与异步纹理上传 | 月光下的旅行。 </title>
+  <meta name="description" content="Vulkan异步队列与异步纹理上传">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >Vulkan异步队列与异步纹理上传</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-10-17T00:00:00Z">October 17, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+      <a href="/categories/flower">Flower</a>
+      &nbsp;
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>Vulkan 常用的队列族有以下四种：</p>
+<ol>
+<li>VK_QUEUE_GRAPHICS_BIT 图形队列族</li>
+<li>VK_QUEUE_COMPUTE_BIT 计算队列族</li>
+<li>VK_QUEUE_TRANSFER_BIT 传输队列族</li>
+<li>VK_QUEUE_SPARSE_BINDING_BIT 稀疏绑定队列族</li>
+</ol>
+<p>基本上，现在机器的图形卡基本都含有（1、2、3）这些独立的队列族，（4 稀疏绑定貌似在RTX显卡上才有）。</p>
+<p>可以通过以下Api查询图形卡的队列族的支持信息：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>VKAPI_ATTR <span style="color:#66d9ef">void</span> VKAPI_CALL <span style="color:#a6e22e">vkGetPhysicalDeviceQueueFamilyProperties</span>(
+</span></span><span style="display:flex;"><span>    VkPhysicalDevice                            physicalDevice,
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span><span style="color:#f92672">*</span>                                   pQueueFamilyPropertyCount,
+</span></span><span style="display:flex;"><span>    VkQueueFamilyProperties<span style="color:#f92672">*</span>                    pQueueFamilyProperties);
+</span></span></code></pre></div><p>得到VkQueueFamilyProperties后，可以使用queueFlags标记来判断队列族的支持情况：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">if</span> (queueFamily.queueFlags <span style="color:#f92672">&amp;</span> VK_QUEUE_GRAPHICS_BIT) 
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 图形队列族
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">else</span> <span style="color:#a6e22e">if</span> (queueFamily.queueFlags <span style="color:#f92672">&amp;</span> VK_QUEUE_COMPUTE_BIT) 
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 具有单独的计算队列族
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">else</span> <span style="color:#a6e22e">if</span>(queueFamily.queueFlags <span style="color:#f92672">&amp;</span> VK_QUEUE_TRANSFER_BIT)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 具有单独的传输队列族
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
+</span></span></code></pre></div><p>而异步上传或异步计算，关键就是判断显卡是否含有单独的传输队列族或计算队列族。</p>
+<p>我首先获取到队列族信息，在创建Vulkan Logic Device时，可以根据每个队列族的最大支持情况申请对应的队列。</p>
+<p>在我的引擎中，我共申请了三个主队列：Graphics、Compute、Present：</p>
+<p><img src="/images/Vulkan%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E6%B5%81%E9%80%81%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0.assets/image-20211017151817062.png" alt="Image"></p>
+<p>在绘制一帧的过程中：</p>
+<p>记录着图形绘制命令（VkCmdDraw*）的CommandBuffer都会提交到Graphics队列中。</p>
+<p>记录着异步计算命令（vkCmdDispatch)的CommandBuffer都会提交到计算队列中。</p>
+<p>显示命令（vkQueuePresentKHR）则使用Present队列。</p>
+<p>这三个主队列是每帧图形绘制专用的，它们仅关心和接受当前帧的图形计算与显示。</p>
+<h2 id="异步队列">异步队列</h2>
+<p>当引擎运行时，可能会有一些异步的图形操作，比如，运行时加载很多纹理、运行时计算LUT图并序列化。对于这些图形请求，比较简单的做法是在当前帧的处理阶段插入一个提交一次的CommandBuffer，提交它到图形队列中并且阻塞等待它运行完成：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">inline</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">executeImmediately</span>(...)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">auto</span> cmdBuf <span style="color:#f92672">=</span> commandPool.allocate();
+</span></span><span style="display:flex;"><span>    record(cmdBuf);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 提交队列
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	vkQueueSubmit(queue, <span style="color:#ae81ff">1</span>, <span style="color:#f92672">&amp;</span>submitInfo, VK_NULL_HANDLE);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 等待队列
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	vkQueueWaitIdle(queue);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>	free(cmdBuf);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>问题在于vkQueueWaitIdle会阻塞主线程很长一段时间，在这段时间内帧率下降得非常严重！</p>
+<p>一个Navie的缓解方法是把所有的加载任务切割到多帧加载，比如，一共有1000张纹理要加载，按照切割任务，我们可以划分到每帧加载100张纹理，这样，主线程的阻塞时间也会相应的减少。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">Tick</span>()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">constexpr</span> <span style="color:#66d9ef">auto</span> perTickLoadNum <span style="color:#f92672">=</span> <span style="color:#ae81ff">100</span>;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">auto</span> i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> perTickLoadNum; i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		loadTexture2DImage(textureContainer[i]);
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>但这里阻塞还是非常严重，Benchmark显示一半的时间都在vkQueueWaitIdle上了。</p>
+<h3 id="增加异步队列">增加异步队列</h3>
+<p>在创建LogicDevice时，我直接按照每种队列族支持的最大数目队列来创建，并把除了主队列外的空余队列存入available*Queues容器中：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">VulkanDevice</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>	VkQueue graphicsQueue <span style="color:#f92672">=</span> VK_NULL_HANDLE; <span style="color:#75715e">// 主图形队列
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	VkQueue presentQueue <span style="color:#f92672">=</span> VK_NULL_HANDLE;  <span style="color:#75715e">// 主显示队列
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	VkQueue computeQueue <span style="color:#f92672">=</span> VK_NULL_HANDLE;  <span style="color:#75715e">// 主计算队列（用于辅助主图形队列的异步计算）
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// 剩余的队列
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>VkQueue<span style="color:#f92672">&gt;</span> availableTransferQueues;    <span style="color:#75715e">// 所有可用的传输队列 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>VkQueue<span style="color:#f92672">&gt;</span> availableComputeQueues;     <span style="color:#75715e">// 所有可用的计算队列
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>VkQueue<span style="color:#f92672">&gt;</span> availableGraphicsQueues;    <span style="color:#75715e">// 所有可用的图形队列
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>};
+</span></span></code></pre></div><p>此时，纹理上传将不再经过graphicsQueue，而是使用availableTransferQueues中的队列。</p>
+<p>并且，由于使用了单独的队列，每个纹理的加载上传可以放在一个单独的线程中进行。</p>
+<h3 id="同步">同步</h3>
+<p>纹理上传的命令提交到availableTransferQueues中时，需要使用一个VkFence来指示命令的执行情况。</p>
+<p>由于引擎中纹理上传命令很多，如果我们每次都手动创建销毁VkFence，也会产生不小的开销，我们需要用一个池来管理重用这些Fence:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">VulkanFencePool</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>	std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>VulkanFence<span style="color:#f92672">*&gt;</span> m_freeFences;
+</span></span><span style="display:flex;"><span>	std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>VulkanFence<span style="color:#f92672">*&gt;</span> m_busyFences;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	VkResult <span style="color:#a6e22e">checkFenceState</span>(VulkanFence<span style="color:#f92672">*</span> fence)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> vkGetFenceStatus(m_device, fence<span style="color:#f92672">-&gt;</span>m_fence);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    VulkanFence<span style="color:#f92672">*</span> <span style="color:#a6e22e">createFence</span>(<span style="color:#66d9ef">bool</span> signaledOnCreate)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (m_freeFences.size() <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            Ref<span style="color:#f92672">&lt;</span>VulkanFence<span style="color:#f92672">&gt;</span> fence <span style="color:#f92672">=</span> m_freeFences.back();
+</span></span><span style="display:flex;"><span>            m_freeFences.pop_back();
+</span></span><span style="display:flex;"><span>            m_busyFences.push_back(fence);
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (signaledOnCreate) 
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                fence<span style="color:#f92672">-&gt;</span>m_state <span style="color:#f92672">=</span> VulkanFence<span style="color:#f92672">::</span>State<span style="color:#f92672">::</span>Signaled;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">return</span> fence;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        VulkanFence<span style="color:#f92672">*</span> newFence <span style="color:#f92672">=</span> <span style="color:#66d9ef">new</span> VulkanFence(m_device, <span style="color:#66d9ef">this</span>, signaledOnCreate);
+</span></span><span style="display:flex;"><span>        m_busyFences.push_back(newFence);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> newFence;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">releaseFence</span>(VulkanFence<span style="color:#f92672">*&amp;</span> fence)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        resetFence(fence);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (int32 i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> m_busyFences.size(); <span style="color:#f92672">++</span>i) 
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (m_busyFences[i] <span style="color:#f92672">==</span> fence)
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                m_busyFences.erase(m_busyFences.begin() <span style="color:#f92672">+</span> i);
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">break</span>;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        m_freeFences.push_back(fence);
+</span></span><span style="display:flex;"><span>        fence <span style="color:#f92672">=</span> <span style="color:#66d9ef">nullptr</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>};
+</span></span></code></pre></div><p>我们将使用后的Fence放入到m_freeFences中，在下次需要新的Fence时直接从里面取即可。</p>
+<p>判断当前提交的命令是否执行完毕的核心函数是vkGetFenceStatus，它返回了Fence的信号状态。</p>
+<p>由于Vulkan不帮我们保存异步执行的状态信息，我们需要手动存储当前异步命令用到的一些临时信息如CommandBuffer、VulkanBuffer等，直到VkFence明确发出完成的信号了才能销毁。</p>
+<p>最简单的办法就是封装一个Task结构体：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">GpuUploadTextureAsync</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">bool</span> m_ready <span style="color:#f92672">=</span> false;
+</span></span><span style="display:flex;"><span>	VkCommandPool m_pool <span style="color:#f92672">=</span> VK_NULL_HANDLE;
+</span></span><span style="display:flex;"><span>	VkDevice m_device <span style="color:#f92672">=</span> VK_NULL_HANDLE;
+</span></span><span style="display:flex;"><span>	VkQueue m_queue <span style="color:#f92672">=</span> VK_NULL_HANDLE;
+</span></span><span style="display:flex;"><span>    Ref<span style="color:#f92672">&lt;</span>VulkanFence<span style="color:#f92672">&gt;</span> fence <span style="color:#f92672">=</span> <span style="color:#66d9ef">nullptr</span>;
+</span></span><span style="display:flex;"><span>	std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>VulkanBuffer<span style="color:#f92672">*&gt;</span> uploadBuffers{};
+</span></span><span style="display:flex;"><span>	std<span style="color:#f92672">::</span>function<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">void</span>()<span style="color:#f92672">&gt;</span> finishCallBack{};
+</span></span><span style="display:flex;"><span>	VkCommandBuffer cmdBuf <span style="color:#f92672">=</span> VK_NULL_HANDLE;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">void</span> <span style="color:#a6e22e">release</span>()
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span>(fence<span style="color:#f92672">!=</span><span style="color:#66d9ef">nullptr</span>)
+</span></span><span style="display:flex;"><span>		{
+</span></span><span style="display:flex;"><span>			VulkanRHI<span style="color:#f92672">::</span>get()<span style="color:#f92672">-&gt;</span>getFencePool().waitAndReleaseFence(fence,<span style="color:#ae81ff">1000000</span>);
+</span></span><span style="display:flex;"><span>			fence <span style="color:#f92672">=</span> <span style="color:#66d9ef">nullptr</span>;
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span>(uploadBuffers.size()<span style="color:#f92672">&gt;</span><span style="color:#ae81ff">0</span>)
+</span></span><span style="display:flex;"><span>		{
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">auto</span><span style="color:#f92672">*</span> buf : uploadBuffers)
+</span></span><span style="display:flex;"><span>			{
+</span></span><span style="display:flex;"><span>				<span style="color:#66d9ef">delete</span> buf;
+</span></span><span style="display:flex;"><span>				buf <span style="color:#f92672">=</span> <span style="color:#66d9ef">nullptr</span>;
+</span></span><span style="display:flex;"><span>			}
+</span></span><span style="display:flex;"><span>			uploadBuffers.clear();
+</span></span><span style="display:flex;"><span>			uploadBuffers.resize(<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>		finishCallBack <span style="color:#f92672">=</span> {};
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span>(cmdBuf<span style="color:#f92672">!=</span>VK_NULL_HANDLE)
+</span></span><span style="display:flex;"><span>		{
+</span></span><span style="display:flex;"><span>			vkFreeCommandBuffers(m_device,m_pool,<span style="color:#ae81ff">1</span>,<span style="color:#f92672">&amp;</span>cmdBuf);
+</span></span><span style="display:flex;"><span>			cmdBuf <span style="color:#f92672">=</span> VK_NULL_HANDLE;
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// NOTE: Call every frame.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#66d9ef">bool</span> <span style="color:#a6e22e">tick</span>()
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span>(<span style="color:#f92672">!</span>m_ready)
+</span></span><span style="display:flex;"><span>		{
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">if</span>(VulkanRHI<span style="color:#f92672">::</span>get()<span style="color:#f92672">-&gt;</span>getFencePool().isFenceSignaled(fence))
+</span></span><span style="display:flex;"><span>			{
+</span></span><span style="display:flex;"><span>				m_ready <span style="color:#f92672">=</span> true;
+</span></span><span style="display:flex;"><span>				<span style="color:#66d9ef">if</span>(finishCallBack)
+</span></span><span style="display:flex;"><span>				{
+</span></span><span style="display:flex;"><span>					finishCallBack();
+</span></span><span style="display:flex;"><span>				}
+</span></span><span style="display:flex;"><span>				release();
+</span></span><span style="display:flex;"><span>			}
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span> m_ready;
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>};
+</span></span></code></pre></div><p>我们在该Task结构体中缓存了当前命令的所有数据，并且直到Fence明确发出完成信号后再释放！</p>
+<h3 id="mipmaps">Mipmaps</h3>
+<p>图片的Mipmaps上传是一个很麻烦的事情。</p>
+<p>首先我们排除运行时生成mipmap的做法（非常慢，而且耗费GPU资源（计算资源或图形资源））。</p>
+<p>在我的引擎中，会对图片原始资源做预处理，包括mipmap生成、srgb标记等，然后将这些数据缓存到连续的二进制文件中。</p>
+<p>离线生成mipmap并加载的方式缺点在于内存碎片过多。在Vulkan的Api设计中，没有直接对全部mipmap一起填充内存的api，必须对每一级mipmap单独来一次copy，像这样：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>VKAPI_ATTR <span style="color:#66d9ef">void</span> VKAPI_CALL <span style="color:#a6e22e">vkCmdCopyBufferToImage</span>(
+</span></span><span style="display:flex;"><span>    VkCommandBuffer                             commandBuffer,
+</span></span><span style="display:flex;"><span>    VkBuffer                                    srcBuffer, <span style="color:#75715e">// 没有Buffer Offset可用！
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    VkImage                                     dstImage,
+</span></span><span style="display:flex;"><span>    VkImageLayout                               dstImageLayout,
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span>                                    regionCount,
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> VkBufferImageCopy<span style="color:#f92672">*</span>                    pRegions);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span>(uint32 level <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; level<span style="color:#f92672">&lt;</span>info.mipmapLevels; level<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    CHECK(mipWidth <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">1</span> <span style="color:#f92672">&amp;&amp;</span> mipHeight <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>    uint32 currentMipLevelSize <span style="color:#f92672">=</span> mipWidth <span style="color:#f92672">*</span> mipHeight <span style="color:#f92672">*</span> TEXTURE_COMPONENT;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">auto</span><span style="color:#f92672">*</span> stageBuffer <span style="color:#f92672">=</span> VulkanBuffer<span style="color:#f92672">::</span>create(
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        (VkDeviceSize)currentMipLevelSize,
+</span></span><span style="display:flex;"><span>        (<span style="color:#66d9ef">void</span><span style="color:#f92672">*</span>)(pixelData.data() <span style="color:#f92672">+</span> offsetPtr)
+</span></span><span style="display:flex;"><span>    );
+</span></span><span style="display:flex;"><span>    uploader<span style="color:#f92672">-&gt;</span>uploadBuffers.push_back(stageBuffer);
+</span></span><span style="display:flex;"><span>    mipWidth  <span style="color:#f92672">/=</span> <span style="color:#ae81ff">2</span>;
+</span></span><span style="display:flex;"><span>    mipHeight <span style="color:#f92672">/=</span> <span style="color:#ae81ff">2</span>;
+</span></span><span style="display:flex;"><span>    offsetPtr <span style="color:#f92672">+=</span> currentMipLevelSize;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>问题在于，一张2k的纹理，mipmap级别可能有11级，这样stageBuffer就得创建11次，这还不算最大的问题，严重的问题在于，在高级mipmap中，像素数据量基本是1x1、2x2、4x4这种级别，这种小数据碎片化特别严重，并且由于独显的Copy带宽一般很充裕，这就导致了256x256级别的StageBuffer和1x1、2x2、4x4这种小级别的StageBuffer花费基本相同的上传时间。</p>
+<h3 id="性能对比">性能对比</h3>
+<p>用Bistro场景做比较，我们一次性上传633张4k纹理（共1.8G）。</p>
+<p>阻塞式：Runtime GenerateMipmap ~ 4min  0Fps</p>
+<p>阻塞式：Offline ~ 2min  0Fps</p>
+<p>切片式（10张/帧）：Runtime GenerateMipmap ~ 6min  2Fps</p>
+<p>异步切片式 （100张/帧）：Offline ~10s 10Fps</p>
+<p>如下所示为异步加载时的3D(Graphics)和Copy队列的运行占用情况：</p>
+<p><img src="/images/Vulkan%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E6%B5%81%E9%80%81%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0.assets/image-20211017162230928.png" alt="Image"></p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/flower">Flower</a>
+        &nbsp;
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/">VkWriteDescriptorSet内存堆释放问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/">Vulkan中的实时软阴影与硬件优化</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/">Vulkan实现Sample Distribution Shadow Maps</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/">Vulkan CascadeShadowMap中的常见问题与解决方案</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/">大型场景下的Vulkan CascadeShadowMap功能开发</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

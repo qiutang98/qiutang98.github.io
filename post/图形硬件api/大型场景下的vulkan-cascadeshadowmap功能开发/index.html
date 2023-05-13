@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 大型场景下的Vulkan CascadeShadowMap功能开发 | 月光下的旅行。 </title>
+  <meta name="description" content="大型场景下的Vulkan CascadeShadowMap功能开发">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >大型场景下的Vulkan CascadeShadowMap功能开发</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2021-07-01T00:00:00Z">July 01, 2021</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+      <a href="/categories/flower">Flower</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>亚马逊开源的Bistro场景大小超过了300m x 300m。先前单纯ShadowMap算法已经无法满足如此大的场景阴影表现需求，就算单张ShadowMap拉到8192 * 8192，也没有办法得到一个质量还看得过去的阴影。</p>
+<p>简单的解决方案就是接入Cascade Shadow Map系统，由于GPU硬件的发展，CSM流派也渐渐划分为两种，一种是传统型，一种是GPU Driven的Virtual Shadow Map型。</p>
+<p>传统型的Cascade Shadow Map系统非常简单，原理就是将相机的视锥划分为近、中、远等几个子视锥，然后根据这几个子视锥的顶点分别计算出从灯源方向的Fit To View正交投影矩阵，然后再分别为每个Cascade渲染一次深度Pass即可。</p>
+<p>流程总结如下：</p>
+<ol>
+<li>按照用户输入的级联数和相机参数划分每级级联的划分深度。</li>
+<li>根据1中的每级级联划分深度和灯源方向计算每级级联的正交投影矩阵。</li>
+<li>为每级级联都建立一次Renderpass，单独渲染到一张深度图上。</li>
+<li>正常Shading时，在片元着色器根据片元的z深度和1中计算出来的每级级联的划分深度做比较，确定当前片元位于第几级级联，然后采样该级级联的深度图做常规的ShadowMap算法即可。</li>
+</ol>
+<p>对于步骤3，为每级级联建立一次Renderpass时，必然会根据该级级联的RenderBounds做一次剔除操作，并且哪怕进行了一次物体级别的剔除，最终进入DrawRecord的物体数还是很多，虽然Vulkan可以多线程Record CommandBuffer，但是这样CPU压力还是很高。</p>
+<p>因此，在育碧的Virtual Shadow Map做法（2015年的Siggraph分享）中，他们用GPU来进行剔除，并且剔除完后直接在GPU端用Compute Shader软件光栅化输出深度到Storage Image中，这样，Light Shading时直接采样这几张Storage Image即可，速度非常的快。</p>
+<p>想要实现Virtual Shadow Map，首先要有一个GPU Culling &amp;&amp; DrawIndirect 的渲染管线，但我目前还没有进行到这一步，因此，我还是用的传统型CascadeShadowMap。</p>
+<p>目前的4级Cascade如下，还没做软阴影，同时性能有待优化：</p>
+<p><img src="/images/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84VulkanCascadeShadowMap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91.assets/image-20210704185015381.png" alt="Image"></p>
+<p><img src="/images/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84VulkanCascadeShadowMap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91.assets/image-20210704185145112.png" alt="Image"></p>
+<p>实现的细节如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">static</span> AutoCVarFloat <span style="color:#a6e22e">cVarCascadeSplitLambda</span>(
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">&#34;r.Shadow.CascadeSplitLambda&#34;</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">&#34;Cascade shadow split lambda.&#34;</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">&#34;Shadow&#34;</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#ae81ff">0.95f</span>,
+</span></span><span style="display:flex;"><span>    CVarFlags<span style="color:#f92672">::</span>ReadAndWrite
+</span></span><span style="display:flex;"><span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">static</span> AutoCVarUint32 <span style="color:#a6e22e">cVarCascadeNum</span>(
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">&#34;r.Shadow.CascadeNum&#34;</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">&#34;Cascade shadow num.&#34;</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">&#34;Shadow&#34;</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#ae81ff">4</span>,
+</span></span><span style="display:flex;"><span>    CVarFlags<span style="color:#f92672">::</span>ReadOnly <span style="color:#f92672">|</span> CVarFlags<span style="color:#f92672">::</span>InitOnce <span style="color:#75715e">// In future we will set it changable maybe.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">Cascade</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> splitDepth;
+</span></span><span style="display:flex;"><span>    glm<span style="color:#f92672">::</span>mat4 viewProj;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">SetupCascades</span>(std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>Cascade<span style="color:#f92672">&gt;&amp;</span> inout,
+</span></span><span style="display:flex;"><span>                              <span style="color:#66d9ef">float</span> nearClip,<span style="color:#66d9ef">float</span> farClip,<span style="color:#66d9ef">const</span> mat4<span style="color:#f92672">&amp;</span> cameraViewProj,<span style="color:#66d9ef">const</span> vec3<span style="color:#f92672">&amp;</span> lightDir);
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> Cascade<span style="color:#f92672">::</span>SetupCascades(std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>Cascade<span style="color:#f92672">&gt;&amp;</span> inout,<span style="color:#66d9ef">float</span> nearClip,<span style="color:#66d9ef">float</span> farClip,<span style="color:#66d9ef">const</span> mat4<span style="color:#f92672">&amp;</span> cameraViewProj,<span style="color:#66d9ef">const</span> vec3<span style="color:#f92672">&amp;</span> inLightDir)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    inout.clear();
+</span></span><span style="display:flex;"><span>    inout.resize(cVarCascadeNum.Get());
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span> cascadeSplits{};
+</span></span><span style="display:flex;"><span>    cascadeSplits.resize(cVarCascadeNum.Get());
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> clipRange <span style="color:#f92672">=</span> farClip <span style="color:#f92672">-</span> nearClip;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> minZ <span style="color:#f92672">=</span> nearClip;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> maxZ <span style="color:#f92672">=</span> nearClip <span style="color:#f92672">+</span> clipRange;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> range <span style="color:#f92672">=</span> maxZ <span style="color:#f92672">-</span> minZ;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> ratio <span style="color:#f92672">=</span> maxZ <span style="color:#f92672">/</span> minZ;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 根据相机视锥和级联数目计算每级级联划分深度。
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// See: https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch10.html
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">for</span>(uint32 i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> cVarCascadeNum.Get(); i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> p <span style="color:#f92672">=</span> (i <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>) <span style="color:#f92672">/</span> <span style="color:#66d9ef">static_cast</span><span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>(cVarCascadeNum.Get());
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> log <span style="color:#f92672">=</span> minZ <span style="color:#f92672">*</span> std<span style="color:#f92672">::</span>pow(ratio, p);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> uniform <span style="color:#f92672">=</span> minZ <span style="color:#f92672">+</span> range <span style="color:#f92672">*</span> p;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">float</span> d <span style="color:#f92672">=</span> cVarCascadeSplitLambda.Get() <span style="color:#f92672">*</span> (log<span style="color:#f92672">-</span>uniform) <span style="color:#f92672">+</span> uniform;
+</span></span><span style="display:flex;"><span>        cascadeSplits[i] <span style="color:#f92672">=</span> (d<span style="color:#f92672">-</span>nearClip) <span style="color:#f92672">/</span> clipRange;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">/////////// 为每级级联计算正交投影矩阵 ////////////
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">float</span> lastSplitDist <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span>(uint32 i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> cVarCascadeNum.Get(); i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 根据划分距离计算当前Cascade的新视锥
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">float</span> splitDist <span style="color:#f92672">=</span> cascadeSplits[i];
+</span></span><span style="display:flex;"><span>        glm<span style="color:#f92672">::</span>vec3 frustumCorners[<span style="color:#ae81ff">8</span>] <span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec3(<span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>,  <span style="color:#ae81ff">1.0f</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>),
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec3(<span style="color:#ae81ff">1.0f</span>,  <span style="color:#ae81ff">1.0f</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>),
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec3(<span style="color:#ae81ff">1.0f</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>),
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec3(<span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>),
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec3(<span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>,  <span style="color:#ae81ff">1.0f</span>,  <span style="color:#ae81ff">1.0f</span>),
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec3(<span style="color:#ae81ff">1.0f</span>,  <span style="color:#ae81ff">1.0f</span>,  <span style="color:#ae81ff">1.0f</span>),
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec3(<span style="color:#ae81ff">1.0f</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>,  <span style="color:#ae81ff">1.0f</span>),
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec3(<span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>,  <span style="color:#ae81ff">1.0f</span>),
+</span></span><span style="display:flex;"><span>        };
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 将ClipSpace下的相机视锥转回世界空间
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        glm<span style="color:#f92672">::</span>mat4 invCam <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>inverse(cameraViewProj);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">uint32_t</span> i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i<span style="color:#f92672">&lt;</span><span style="color:#ae81ff">8</span>; i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec4 invCorner <span style="color:#f92672">=</span> invCam <span style="color:#f92672">*</span> glm<span style="color:#f92672">::</span>vec4(frustumCorners[i] , <span style="color:#ae81ff">1.0f</span>);
+</span></span><span style="display:flex;"><span>            frustumCorners[i] <span style="color:#f92672">=</span> invCorner <span style="color:#f92672">/</span> invCorner.w;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span>(uint32 i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> cVarCascadeNum.Get(); i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec3 dist <span style="color:#f92672">=</span> frustumCorners[i <span style="color:#f92672">+</span> <span style="color:#ae81ff">4</span>] <span style="color:#f92672">-</span> frustumCorners[i];
+</span></span><span style="display:flex;"><span>            frustumCorners[i <span style="color:#f92672">+</span> <span style="color:#ae81ff">4</span>] <span style="color:#f92672">=</span> frustumCorners[i] <span style="color:#f92672">+</span> (dist <span style="color:#f92672">*</span> splitDist);
+</span></span><span style="display:flex;"><span>            frustumCorners[i] <span style="color:#f92672">=</span> frustumCorners[i] <span style="color:#f92672">+</span> (dist <span style="color:#f92672">*</span> lastSplitDist);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 计算视锥中心
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        glm<span style="color:#f92672">::</span>vec3 frustumCenter <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>vec3(<span style="color:#ae81ff">0.0f</span>);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span>(uint32 i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i<span style="color:#f92672">&lt;</span><span style="color:#ae81ff">8</span>; i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            frustumCenter <span style="color:#f92672">+=</span> frustumCorners[i];
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        frustumCenter <span style="color:#f92672">/=</span> <span style="color:#ae81ff">8.0f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 计算视锥半径
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">float</span> radius <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0f</span>;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span>(uint32 i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">8</span>; i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">float</span> distance <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>length(frustumCorners[i]<span style="color:#f92672">-</span>frustumCenter);
+</span></span><span style="display:flex;"><span>            radius <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>max(radius,distance);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        radius <span style="color:#f92672">=</span> std<span style="color:#f92672">::</span>ceil(radius <span style="color:#f92672">*</span> <span style="color:#ae81ff">16.0f</span>) <span style="color:#f92672">/</span> <span style="color:#ae81ff">16.0f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 计算灯光投影范围
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        glm<span style="color:#f92672">::</span>vec3 maxExtents <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>vec3(radius);
+</span></span><span style="display:flex;"><span>        glm<span style="color:#f92672">::</span>vec3 minExtents <span style="color:#f92672">=</span> <span style="color:#f92672">-</span>maxExtents;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        glm<span style="color:#f92672">::</span>vec3 lightDir <span style="color:#f92672">=</span> normalize(inLightDir);
+</span></span><span style="display:flex;"><span>        glm<span style="color:#f92672">::</span>mat4 lightViewMatrix <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>lookAt(
+</span></span><span style="display:flex;"><span>            frustumCenter <span style="color:#f92672">-</span> lightDir <span style="color:#f92672">*</span> <span style="color:#f92672">-</span>minExtents.z,
+</span></span><span style="display:flex;"><span>            frustumCenter,
+</span></span><span style="display:flex;"><span>            glm<span style="color:#f92672">::</span>vec3(<span style="color:#ae81ff">0.0f</span>,<span style="color:#ae81ff">1.0f</span>,<span style="color:#ae81ff">0.0f</span>)
+</span></span><span style="display:flex;"><span>        );
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        glm<span style="color:#f92672">::</span>mat4 lightOrthoMatrix <span style="color:#f92672">=</span> glm<span style="color:#f92672">::</span>ortho(
+</span></span><span style="display:flex;"><span>            minExtents.x,
+</span></span><span style="display:flex;"><span>            maxExtents.x,
+</span></span><span style="display:flex;"><span>            minExtents.y,
+</span></span><span style="display:flex;"><span>            maxExtents.y,
+</span></span><span style="display:flex;"><span>            <span style="color:#ae81ff">0.0f</span>,
+</span></span><span style="display:flex;"><span>            maxExtents.z <span style="color:#f92672">-</span> minExtents.z
+</span></span><span style="display:flex;"><span>        );
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        inout[i].splitDepth <span style="color:#f92672">=</span> (nearClip <span style="color:#f92672">+</span> splitDist <span style="color:#f92672">*</span> clipRange) <span style="color:#f92672">*</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1.0f</span>;
+</span></span><span style="display:flex;"><span>        inout[i].viewProj <span style="color:#f92672">=</span> lightOrthoMatrix <span style="color:#f92672">*</span> lightViewMatrix;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        lastSplitDist <span style="color:#f92672">=</span> cascadeSplits[i];
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>我这里用了类似虚幻的AutoConsoleValue的系统来配置cVarCascadeNum和cVarCascadeSplitLambda。</p>
+<p>计算完级联的分配后，在渲染部分，我们需要为每一级级联都准备对应的Framebuffer:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">CascadeShadowDepthPass</span> <span style="color:#66d9ef">final</span><span style="color:#f92672">:</span> <span style="color:#66d9ef">public</span> GraphicsPassInterface
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">private</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>VkFramebuffer<span style="color:#f92672">&gt;&gt;</span> mCascadeFrameBuffers;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> CascadeShadowDepthPass<span style="color:#f92672">::</span>CreateFramebuffer()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    uint32 cascadeNum <span style="color:#f92672">=</span> <span style="color:#ae81ff">4</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> uint32 swapchainImagecount <span style="color:#f92672">=</span> (uint32)VulkanRHI<span style="color:#f92672">::</span>Get()<span style="color:#f92672">-&gt;</span>GetSwapchainImages().size();
+</span></span><span style="display:flex;"><span>    mCascadeFrameBuffers.resize(swapchainImagecount);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span>(uint32 i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> swapchainImagecount; i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> cascadeFrameBuffers <span style="color:#f92672">=</span> mCascadeFrameBuffers[i];
+</span></span><span style="display:flex;"><span>        cascadeFrameBuffers.resize(cascadeNum);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span>(uint32 j <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; j <span style="color:#f92672">&lt;</span> cascadeNum; j<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            VulkanFrameBufferFactory vfbf {};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            vfbf.SetRenderpass(mRenderpass)
+</span></span><span style="display:flex;"><span>                .AddArrayAttachment(SceneTexture<span style="color:#f92672">::</span>Get()<span style="color:#f92672">-&gt;</span>GetCascadeShadowDepthMapArray(), j);
+</span></span><span style="display:flex;"><span>            cascadeFrameBuffers[j] <span style="color:#f92672">=</span> vfbf.Create(VulkanRHI<span style="color:#f92672">::</span>Get()<span style="color:#f92672">-&gt;</span>GetDevice());
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>在SceneTexture类中，我申请了一组 2048 * 2048 * cVarCascadeNum 的 Texture2DArray（可以省点带宽，同时方便写forloop下标选择），用它们来存储CascadeShadowMap的信息。</p>
+<p>在每帧渲染前的Update部分，需要先更新全局UBO的Cascde信息（我把Cascade信息写在了全局的UBO中）：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// PerframeData.glsl 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>layout(set <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>, binding <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>) uniform  SceneData{   
+</span></span><span style="display:flex;"><span>	vec4 cascadeSplits;
+</span></span><span style="display:flex;"><span>	mat4[<span style="color:#ae81ff">4</span>] cascadeViewProjMatrix;
+</span></span><span style="display:flex;"><span>	vec4 sunlightDirection; 
+</span></span><span style="display:flex;"><span>} sceneData;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// RenderScene.h
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">GPUSceneData</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    vec4 cascadeSplits;
+</span></span><span style="display:flex;"><span>    glm<span style="color:#f92672">::</span>mat4 cascadeViewProjMatrix[MAX_CASCADE_NUM];
+</span></span><span style="display:flex;"><span>    glm<span style="color:#f92672">::</span>vec4 sunlightDirection;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// SimpleMeshDrawRenderer.cpp
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">void</span> SimpleMeshDrawRenderer<span style="color:#f92672">::</span>UpdateDynamicMeshDrawCommand(RenderScene<span style="color:#f92672">*</span> inScene,CameraComponent<span style="color:#f92672">*</span> cam,uint32 backBuffer)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    mShadowDepthPass.DynamicRecord(inScene,cam,backBuffer);
+</span></span><span style="display:flex;"><span>    mSimpleMeshDrawpass.DynamicRecord(inScene,cam,backBuffer);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// SimpleMeshDrawRenderer.cpp
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">void</span> SimpleMeshDrawRenderer<span style="color:#f92672">::</span>Render(RenderScene<span style="color:#f92672">*</span> inScene,PackRenderContext<span style="color:#f92672">*</span> pc)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    GPUSceneData sceneData <span style="color:#f92672">=</span> {};
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span>(pc<span style="color:#f92672">-&gt;</span>directionalLight <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nullptr</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        sceneData.sunlightDirection <span style="color:#f92672">=</span> vec4(pc<span style="color:#f92672">-&gt;</span>directionalLight<span style="color:#f92672">-&gt;</span>GetLightDirection(),<span style="color:#ae81ff">0.0f</span>);
+</span></span><span style="display:flex;"><span>        std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>Cascade<span style="color:#f92672">&gt;</span> cascadeInfos{};
+</span></span><span style="display:flex;"><span>        Cascade<span style="color:#f92672">::</span>SetupCascades(
+</span></span><span style="display:flex;"><span>            cascadeInfos,
+</span></span><span style="display:flex;"><span>            pc<span style="color:#f92672">-&gt;</span>camera<span style="color:#f92672">-&gt;</span>GetZNear(),
+</span></span><span style="display:flex;"><span>            pc<span style="color:#f92672">-&gt;</span>camera<span style="color:#f92672">-&gt;</span>GetZFar(),
+</span></span><span style="display:flex;"><span>            camData.viewProj,
+</span></span><span style="display:flex;"><span>            pc<span style="color:#f92672">-&gt;</span>directionalLight<span style="color:#f92672">-&gt;</span>GetLightDirection()
+</span></span><span style="display:flex;"><span>        );
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span>(size_t i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> cascadeInfos.size(); i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            sceneData.cascadeViewProjMatrix[i] <span style="color:#f92672">=</span> cascadeInfos[i].viewProj;
+</span></span><span style="display:flex;"><span>            sceneData.cascadeSplits[i] <span style="color:#f92672">=</span> cascadeInfos[i].splitDepth;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    UpdateDynamicMeshDrawCommand(inScene,pc<span style="color:#f92672">-&gt;</span>camera,backBufferIndex);
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
+</span></span></code></pre></div><p>接下来是Cascade Shadow Pass DrawCommandRecord部分,需要先对当前CascadeBounds内的物体做一次Culling在渲染：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">void</span> CascadeShadowDepthPass<span style="color:#f92672">::</span>DynamicRecord(RenderScene<span style="color:#f92672">*</span> inScene,CameraComponent<span style="color:#f92672">*</span> camera,uint32 backBufferIndex)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Get self keep commandbuffer.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    VkCommandBuffer cmd <span style="color:#f92672">=</span> GetDynamicVkCommandBuffer(backBufferIndex);
+</span></span><span style="display:flex;"><span>    VulkanCheck(vkResetCommandBuffer(cmd,<span style="color:#ae81ff">0</span>));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> extent <span style="color:#f92672">=</span> SceneTexture<span style="color:#f92672">::</span>Get()<span style="color:#f92672">-&gt;</span>GetCascadeShadowDepthMapArray()<span style="color:#f92672">-&gt;</span>GetExtent();
+</span></span><span style="display:flex;"><span>    VkRect2D scissor{};
+</span></span><span style="display:flex;"><span>    scissor.offset <span style="color:#f92672">=</span> {<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">0</span>};
+</span></span><span style="display:flex;"><span>    scissor.extent <span style="color:#f92672">=</span> { extent.width,extent.height};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    VkViewport viewport{};
+</span></span><span style="display:flex;"><span>    viewport.x <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0f</span>;
+</span></span><span style="display:flex;"><span>    viewport.y <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0f</span>;
+</span></span><span style="display:flex;"><span>    viewport.width <span style="color:#f92672">=</span> (<span style="color:#66d9ef">float</span>)SceneTexture<span style="color:#f92672">::</span>Get()<span style="color:#f92672">-&gt;</span>GetCascadeShadowDepthMapArray()<span style="color:#f92672">-&gt;</span>GetExtent().width;
+</span></span><span style="display:flex;"><span>    viewport.height <span style="color:#f92672">=</span> (<span style="color:#66d9ef">float</span>)SceneTexture<span style="color:#f92672">::</span>Get()<span style="color:#f92672">-&gt;</span>GetCascadeShadowDepthMapArray()<span style="color:#f92672">-&gt;</span>GetExtent().height;
+</span></span><span style="display:flex;"><span>    viewport.minDepth <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0f</span>;
+</span></span><span style="display:flex;"><span>    viewport.maxDepth <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> depthBiasConstant <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0f</span>;<span style="color:#75715e">// 1.25f;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> depthBiasSlope <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0f</span>;<span style="color:#75715e">//1.75f;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>array<span style="color:#f92672">&lt;</span>VkClearValue,<span style="color:#ae81ff">1</span><span style="color:#f92672">&gt;</span> clearValues;
+</span></span><span style="display:flex;"><span>    clearValues[<span style="color:#ae81ff">0</span>].depthStencil <span style="color:#f92672">=</span> { <span style="color:#ae81ff">1.0f</span>, <span style="color:#ae81ff">0</span> };
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    VkCommandBufferBeginInfo cmdBeginInfo <span style="color:#f92672">=</span> VulkanCommandbufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+</span></span><span style="display:flex;"><span>    VulkanCheck(vkBeginCommandBuffer(cmd,<span style="color:#f92672">&amp;</span>cmdBeginInfo));
+</span></span><span style="display:flex;"><span>    vkCmdSetScissor(cmd,<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">1</span>,<span style="color:#f92672">&amp;</span>scissor);
+</span></span><span style="display:flex;"><span>    vkCmdSetViewport(cmd,<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">1</span>,<span style="color:#f92672">&amp;</span>viewport);
+</span></span><span style="display:flex;"><span>    vkCmdSetDepthBias(cmd,depthBiasConstant,<span style="color:#ae81ff">0.0f</span>,depthBiasSlope);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> simpleMeshDC <span style="color:#f92672">=</span> inScene<span style="color:#f92672">-&gt;</span>GetMeshpassDrawCalls().GetSimpleMeshDC();
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        VkRenderPassBeginInfo rpInfo <span style="color:#f92672">=</span> VulkanRenderpassBeginInfo(mRenderpass,{extent.width,extent.height},VK_NULL_HANDLE);
+</span></span><span style="display:flex;"><span>        rpInfo.clearValueCount <span style="color:#f92672">=</span> <span style="color:#66d9ef">static_cast</span><span style="color:#f92672">&lt;</span><span style="color:#66d9ef">uint32_t</span><span style="color:#f92672">&gt;</span>(clearValues.size());
+</span></span><span style="display:flex;"><span>        rpInfo.pClearValues <span style="color:#f92672">=</span> clearValues.data();
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span>(uint32 index <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; index <span style="color:#f92672">&lt;</span> cVarCascadeNum.Get(); index<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            rpInfo.framebuffer <span style="color:#f92672">=</span> mCascadeFrameBuffers[backBufferIndex][index];
+</span></span><span style="display:flex;"><span>            vkCmdBeginRenderPass(cmd,<span style="color:#f92672">&amp;</span>rpInfo,VK_SUBPASS_CONTENTS_INLINE);
+</span></span><span style="display:flex;"><span>            VkPipelineLayout activeLayout <span style="color:#f92672">=</span> VK_NULL_HANDLE;
+</span></span><span style="display:flex;"><span>            VkPipeline activePipeline <span style="color:#f92672">=</span> VK_NULL_HANDLE;
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">for</span>(RenderableMesh<span style="color:#f92672">*</span> cacheDCp : simpleMeshDC.staticDrawCall)
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                RenderableMesh<span style="color:#f92672">&amp;</span> cacheDC <span style="color:#f92672">=</span> <span style="color:#f92672">*</span>cacheDCp;
+</span></span><span style="display:flex;"><span>                cacheDC.meshReference<span style="color:#f92672">-&gt;</span>vertexBuffer<span style="color:#f92672">-&gt;</span>Bind(cmd);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">for</span>(<span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> subMesh:cacheDC.meshReference<span style="color:#f92672">-&gt;</span>subMeshes)
+</span></span><span style="display:flex;"><span>                {
+</span></span><span style="display:flex;"><span>                    <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> loopLayout <span style="color:#f92672">=</span> subMesh.materialCollection.shadowDepthReference<span style="color:#f92672">-&gt;</span>original<span style="color:#f92672">-&gt;</span>passShaders[MeshpassType<span style="color:#f92672">::</span>ShadowDepth]<span style="color:#f92672">-&gt;</span>layout;
+</span></span><span style="display:flex;"><span>                    <span style="color:#66d9ef">auto</span><span style="color:#f92672">&amp;</span> loopPipeline <span style="color:#f92672">=</span> subMesh.materialCollection.shadowDepthReference<span style="color:#f92672">-&gt;</span>original<span style="color:#f92672">-&gt;</span>passShaders[MeshpassType<span style="color:#f92672">::</span>ShadowDepth]<span style="color:#f92672">-&gt;</span>pipeline;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// 检查是否需要切换pipeline
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    <span style="color:#66d9ef">if</span>(activePipeline <span style="color:#f92672">!=</span> loopPipeline)
+</span></span><span style="display:flex;"><span>                    {
+</span></span><span style="display:flex;"><span>                        activePipeline <span style="color:#f92672">=</span> loopPipeline;
+</span></span><span style="display:flex;"><span>                        activeLayout <span style="color:#f92672">=</span> loopLayout;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                        inScene<span style="color:#f92672">-&gt;</span>GetFrameData(backBufferIndex).BindDescriptorSet(cmd,activeLayout,MeshpassType<span style="color:#f92672">::</span>ShadowDepth);
+</span></span><span style="display:flex;"><span>                        inScene<span style="color:#f92672">-&gt;</span>GetCacheStaticMeshSSBO().BindDescriptorSet(cmd,activeLayout);
+</span></span><span style="display:flex;"><span>                        vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,activePipeline);
+</span></span><span style="display:flex;"><span>                    }
+</span></span><span style="display:flex;"><span>                    subMesh.indexBuffer<span style="color:#f92672">-&gt;</span>Bind(cmd);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                    GPUCascadeIndex constants;
+</span></span><span style="display:flex;"><span>                    constants.index <span style="color:#f92672">=</span> index;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                    vkCmdPushConstants(cmd, activeLayout, VK_SHADER_STAGE_VERTEX_BIT, <span style="color:#ae81ff">0</span>, <span style="color:#66d9ef">sizeof</span>(GPUCascadeIndex), <span style="color:#f92672">&amp;</span>constants);
+</span></span><span style="display:flex;"><span>                    <span style="color:#66d9ef">if</span>(CullTest(subMesh)) <span style="color:#75715e">// Culling 测试。
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    {
+</span></span><span style="display:flex;"><span>                        <span style="color:#75715e">// 渲染
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                        vkCmdDrawIndexed(cmd,subMesh.indicesCount,<span style="color:#ae81ff">1</span>,<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">0</span>,<span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>                    }
+</span></span><span style="display:flex;"><span>                }
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            vkCmdEndRenderPass(cmd);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    VulkanCheck(vkEndCommandBuffer(cmd));
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>受到虚幻的影响，这里整体的渲染架构和虚幻的非常的像。</p>
+<p>Shader部分，着色时，需要传入Viespace的片元坐标，并将它和先前划分的SplitDepth做深度比较，以此确定当前像素在哪个Cascade级别：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>uint cascadeIndex <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>cascadeIndex <span style="color:#f92672">+=</span> inViewSpacePos.z <span style="color:#f92672">&lt;</span> sceneData.cascadeSplits.x <span style="color:#f92672">?</span>  <span style="color:#ae81ff">1</span> <span style="color:#f92672">:</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>cascadeIndex <span style="color:#f92672">+=</span> inViewSpacePos.z <span style="color:#f92672">&lt;</span> sceneData.cascadeSplits.y <span style="color:#f92672">?</span>  <span style="color:#ae81ff">1</span> <span style="color:#f92672">:</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>cascadeIndex <span style="color:#f92672">+=</span> inViewSpacePos.z <span style="color:#f92672">&lt;</span> sceneData.cascadeSplits.z <span style="color:#f92672">?</span>  <span style="color:#ae81ff">1</span> <span style="color:#f92672">:</span> <span style="color:#ae81ff">0</span>;
+</span></span></code></pre></div><p>我这里暂时HardCode了4级的CascadeSplitDepth在cascadeSplits的x、y、z、w分量中。</p>
+<p>剩下的就是正常的ShadowMap流程了。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+        <a href="/tags/flower">Flower</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/">Vulkan中的实时软阴影与硬件优化</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/">Vulkan利用SpirV-Cross提取Shader反射信息来自动构建MeshDrawCommand</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/">UE4移动端中的两种Resolve</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/texturecache-miss%E9%97%AE%E9%A2%98/">TextureCache Miss问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/">UE4.26 移动端手机Tiled Resolve性能记录</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> UE4.27实现彩虹六号中的ShadowCache HZB Culling | 月光下的旅行。 </title>
+  <meta name="description" content="UE4.27实现彩虹六号中的ShadowCache HZB Culling">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >UE4.27实现彩虹六号中的ShadowCache HZB Culling</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2022-06-01T00:00:00Z">June 01, 2022</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/unreal">Unreal</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>游戏场景中经常需要打一些动态的光，实时投射动态阴影，这通常会让ShadowDepth Pass的绘制压力变得很大。</p>
+<p>一种优化的思路是做ShadowCache，以UE4中局部灯的ShadowCache为例，对于场景中的每一盏局部灯，它把固定物体的ShadowDepth渲染到一张单独的ShadowMap中，在满足如下条件时：</p>
+<ol>
+<li>
+<p>动态光源没有移动，投射属性没有发生变化。</p>
+</li>
+<li>
+<p>动态光源离相机距离变化不大。（当相机移动导致动态光源离相机很近时，原有固定物体的ShadowDepth分辨率可能不够用，因此UE4会重新渲染一张新的高分辨率ShadowDepth，同样，远离相机时，原有动态光缓存的ShadowDepth的分辨率可能过高造成浪费，UE4会渲染一张小的新ShadowDepth，如果灯光不可见，还会释放掉缓存的ShadowDepth）。</p>
+</li>
+</ol>
+<p>以上条件均满足时，ShadowDepth将一直作为ShadowCache存在显存中，下次渲染阴影时，固定物体直接跳过，拷贝ShadowCache到新的RT上，仅需在这张新的RT上继续渲染动态物体的ShadowDepth。</p>
+<p>彩虹六号也是这个思路，不过他们更进一层楼，直接在ShadowCache上做动态物体的HZB Culling，然后直接Gpu DrawIndirect绘制动态物体。</p>
+<p>彩虹六号沿用之前大革命的GPU Driven管线，所以他们可以直接在当前帧内搞定所有的流程，比较简单。</p>
+<p>而在UE4里做这一套流程就很苦逼，非常的绕，思路可以参考UE4 HZB Occlusion Culling的流程，使用延迟一帧，CPU回读，并手动Fence同步的做法。反正各种别扭。实际上也是纯搬砖，没一点新意。</p>
+<p>但最终实现后剔除效率还是挺不错的：</p>
+<p><img src="/images/ShadowCacheHZB.assets/Snipaste_2022-06-13_14-04-29.png" alt="Image"></p>
+<p>UE4原本的ShadowCache流程大概如下，仅做局部光MainView可见性测试和相交性测试：</p>
+<p><img src="/images/ShadowCacheHZB.assets/image-20220613143736792.png" alt="Image"></p>
+<p>要在UE4中做ShadowCache HZB Cull 流程，则绕很多，额外加了四个Pass和一个Fence:</p>
+<p><img src="/images/ShadowCacheHZB.assets/image-20220613145936104.png" alt="Image"></p>
+<p><img src="/images/ShadowCacheHZB.assets/image-20220613150024354.png" alt="Image"></p>
+<p>流程大概如下：</p>
+<ul>
+<li>
+<p>ShadowCache HZB Build.(#Pass 0)</p>
+</li>
+<li>
+<p>Movable Bounds Submit to GPU.(#Pass 1)</p>
+</li>
+<li>
+<p>Multi Spot Lights culling. (#Pass 2)</p>
+</li>
+<li>
+<p>Result Pack To Uint8. (#Pass 3)</p>
+</li>
+<li>
+<p>Copy Result To CPU.(#Pass 4)</p>
+</li>
+<li>
+<p><strong>FeedBack Read. (Blocking GPU)</strong></p>
+</li>
+</ul>
+<p>首先是对每张尚未生成HZB的ShadowCache生成HZB，这个比较简单，不过要注意两点，一是ShadowCache有一个PixelSize为4的Border，因此，第一级HZB要把EdgeClamp保留4个Pixel。二是最高的三级HZB没啥意义，实际上可以跳过1x1和2x2，4x4的级别的HZB。这样，用好LDS，一个pass能生成4级HZB，通常只需两个pass就搞定了，并且这一步可以放到AsyncCompute中，相当于免费。</p>
+<p>然后是Movable Bounds收集并上传到GPU，这一步是直接Copy UE4 HZB Occlusion的，另外可以直接用GPU Scene中的数据, Submit这里只需收集PrimitiveId即可，这样就减少Upload的数据量了。（另外，这一步同样可以放到AsyncCompute中。做好同步的插入基本等于免费。）</p>
+<p>然后苦逼的一点是UE4不支持BIndless，所以每盏灯的剔除都得单独开一个ComputePass，尽管可能某一盏灯就他喵的有几个剔除物体，但还是得开一组线程来用。</p>
+<p>Feedback这里最好用Texture，别用StructureBuffer，实测StructureBuffer真的真的非常慢。</p>
+<p>另外我还搞了一个PackUint8操作，这样可以最大幅度的减少CopyResultToCPU的花费时间。</p>
+<p>无论如何，这些Pass全部都可以放到AsyncCompute中，除开最后的FeedBack Read之外，几乎免费。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/unreal">Unreal</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-ilc%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E4%B8%8E%E6%B8%B2%E6%9F%93/">UE4.26 ILC加载与渲染</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/">UE4.26 Lightmap从烘焙到渲染</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/ue4%E5%8D%A1%E9%80%9A%E6%B8%B2%E6%9F%93%E5%B0%9D%E8%AF%95/">UE4卡通渲染尝试</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E9%99%8D%E5%88%86%E8%BE%A8%E7%8E%87%E7%A6%BB%E5%B1%8F%E5%8D%8A%E9%80%8F%E6%98%8E%E6%B8%B2%E6%9F%93%E7%9A%84%E5%9D%91/">UE4.22移动端降分辨率离屏半透明渲染的坑</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22-%E9%92%88%E5%AF%B9%E6%8D%8F%E8%84%B8%E7%9A%84shadowmap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92%E7%AE%97%E6%B3%95%E5%86%8D%E6%94%B9%E8%BF%9B/">虚幻4捏脸的ShadowMap投影包围盒算法再改进</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

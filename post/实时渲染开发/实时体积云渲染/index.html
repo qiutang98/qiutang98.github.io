@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 实时体积云渲染的光照细节 | 月光下的旅行。 </title>
+  <meta name="description" content="实时体积云渲染的光照细节">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >实时体积云渲染的光照细节</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2023-05-13T00:00:00Z">May 13, 2023</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>去年十月份我打算在引擎里加入体积云，折腾两个月后弄了一个大概的效果，基本看得过去，匆忙录了一个视频：</p>
+<p><a href="https://www.bilibili.com/video/BV18e4y1L7bv">https://www.bilibili.com/video/BV18e4y1L7bv</a></p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/a.png" alt="Image"></p>
+<p>但把体积云作为天空的默认启动效果，放在场景中，360°频繁观看时，总会觉得辣眼睛。我又花了好多时间来细调这个效果，大概是3个月的闲暇时间吧 :D，快魔怔了之后终于得到了一个还算自然的效果（再也不改动体积云相关的Shader了）。</p>
+<p>体积云渲染使用Volumetric Raymarching技术，渲染前我们确定星球的半径，体积云层的开始高度和终止高度，使用一些简单的数学运算，很容易就能得到RayMarching的起始点和终止点 a 和 b ：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/image-20230513210920679.png" alt="Image"></p>
+<p>大家都知道光线在经过水/烟/雾等体积时会被吸收掉一部分能量，因此，在a到b的路上，我们也要知道天空的光线有多少被吸收掉了？</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/image-20230513211238107.png" alt="Image"></p>
+<p>使用transmittance来表示天空被云遮挡的程度（透射率），那么体积云的渲染公式如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>vec3 finalColor <span style="color:#f92672">=</span> transmittance <span style="color:#f92672">*</span> skyBakgroundColor; <span style="color:#75715e">// skyBakgroundColor为天空的颜色
+</span></span></span></code></pre></div><p>然后云本身也会被照亮，用scattering表示被照亮后的亮度，那么光线 b-&gt; a的过程中，也要加入这个scattering, 此时为：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>vec3 finalColor <span style="color:#f92672">=</span> transmittance <span style="color:#f92672">*</span> skyBakgroundColor <span style="color:#f92672">+</span> scattering; 
+</span></span></code></pre></div><p>我们仅需计算transmittance和scattering就可以实现体积云的渲染了，XD。</p>
+<p>transmittance可以使用Beer定律来计算得到，由于体积云位于大气中，可以使用大气散射的简化Beer公式。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// density为云的密度， a/b为大气层两个交点，距离单位为米
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">float</span> transmittance <span style="color:#f92672">=</span> exp(<span style="color:#f92672">-</span>cloudDensity <span style="color:#f92672">*</span> distance(a, b)); 
+</span></span></code></pre></div><p>从上面的示意图就能看出来，b-&gt;a之间的云是随机散布的，这里的cloudDensity很难用一个函数表示，所以我们要在b-&gt;a之间切段离散化来求解（Ray marching），</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/image-20230513213515270.png" alt="Image"></p>
+<p>此时，transmittance的计算伪代码如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> transmittance <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span>;
+</span></span><span style="display:flex;"><span>vec3 scattering <span style="color:#f92672">=</span> vec3(<span style="color:#ae81ff">0.0f</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>vec3 stepPosition <span style="color:#f92672">=</span> a;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">while</span>(a<span style="color:#f92672">-&gt;</span>b)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> stepCloudDensity <span style="color:#f92672">=</span> sampleCloud(stepPosition); <span style="color:#75715e">// 采样体积云的密度
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">float</span> stepTransmittance <span style="color:#f92672">=</span> exp(<span style="color:#f92672">-</span>stepCloudDensity <span style="color:#f92672">*</span> dt);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    stepPosition <span style="color:#f92672">+=</span> dt <span style="color:#f92672">*</span> dir;
+</span></span><span style="display:flex;"><span>    transmittance <span style="color:#f92672">*=</span> stepTransmittance;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>vec3 finalColor <span style="color:#f92672">=</span> transmittance <span style="color:#f92672">*</span> skyBakgroundColor <span style="color:#f92672">+</span> scattering; 
+</span></span></code></pre></div><p>此时忽略云的scattering， 直接输出会得到如下结果：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/image-20230513214157106.png" alt="Image"></p>
+<p>接下来计算云的scattering，刚刚求解transmittance时，已经切段RayMarching了，我们只需在Marching途中，计算一下步进点的Scattering并累加起来即可。</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/image-20230513215516199.png" alt="Image"></p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> transmittance <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span>;
+</span></span><span style="display:flex;"><span>vec3 scattering <span style="color:#f92672">=</span> vec3(<span style="color:#ae81ff">0.0f</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>vec3 stepPosition <span style="color:#f92672">=</span> a;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">while</span>(a<span style="color:#f92672">-&gt;</span>b)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> stepCloudDensity <span style="color:#f92672">=</span> sampleCloud(stepPosition); <span style="color:#75715e">// 采样体积云的密度
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">float</span> stepTransmittance <span style="color:#f92672">=</span> exp(<span style="color:#f92672">-</span>stepCloudDensity <span style="color:#f92672">*</span> dt);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    vec3 stepScattering <span style="color:#f92672">=</span> <span style="color:#f92672">???</span>
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    vec3 sigmaS <span style="color:#f92672">=</span> vec3(stepCloudDensity);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// b-&gt;P transmittance` in step.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// NOTE: need * (sigmaS * dt) optical depth.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    scattering <span style="color:#f92672">+=</span> stepScattering <span style="color:#f92672">*</span> transmittance <span style="color:#f92672">*</span> (sigmaS <span style="color:#f92672">*</span> dt);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    stepPosition <span style="color:#f92672">+=</span> dt <span style="color:#f92672">*</span> dir;
+</span></span><span style="display:flex;"><span>    transmittance <span style="color:#f92672">*=</span> stepTransmittance;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// transmittance b-&gt;a
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>vec3 finalColor <span style="color:#f92672">=</span> transmittance <span style="color:#f92672">*</span> skyBakgroundColor <span style="color:#f92672">+</span> scattering; 
+</span></span></code></pre></div><p>寒霜引擎在2017年的slices中给出了更好看的scattering积分公式，如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>vec3 sigmaS <span style="color:#f92672">=</span> vec3(stepCloudDensity);
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> sigmaA <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0</span>;
+</span></span><span style="display:flex;"><span>vec3 sigmaE <span style="color:#f92672">=</span> max(vec3(<span style="color:#ae81ff">1e-8</span>f), sigmaA <span style="color:#f92672">+</span> sigmaS);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>vec3 sactterLitStep <span style="color:#f92672">=</span> stepScattering <span style="color:#f92672">*</span> sigmaS;
+</span></span><span style="display:flex;"><span>sactterLitStep <span style="color:#f92672">=</span> transmittance <span style="color:#f92672">*</span> (sactterLitStep <span style="color:#f92672">-</span> sactterLitStep <span style="color:#f92672">*</span> stepTransmittance);
+</span></span><span style="display:flex;"><span>sactterLitStep <span style="color:#f92672">/=</span> sigmaE;
+</span></span><span style="display:flex;"><span>scattering <span style="color:#f92672">+=</span> sactterLitStep; 
+</span></span></code></pre></div><p>积分公式有了之后, 只需搞定步进点的光照即可。</p>
+<p>体积云位于天空中，会受到太阳的直接光照，很直接的，光照公式可表示为：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>vec3 stepScattering <span style="color:#f92672">=</span> sunColor <span style="color:#f92672">*</span> sunAtmosphereTransmittance <span style="color:#f92672">*</span> sunPhase <span style="color:#f92672">*</span> sunVisibility;
+</span></span></code></pre></div><p>sun atmosphere transmittance为天空大气模型中计算得到的步进点太阳透射率。</p>
+<p>sun phase一般使用两次hg公式拟合，可以得到体积云的&quot;银边效果&quot;：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// See http://www.pbr-book.org/3ed-2018/Volume_Scattering/Phase_Functions.html
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">hgPhase</span>(<span style="color:#66d9ef">float</span> g, <span style="color:#66d9ef">float</span> cosTheta)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> numer <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span> <span style="color:#f92672">-</span> g <span style="color:#f92672">*</span> g;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> denom <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span> <span style="color:#f92672">+</span> g <span style="color:#f92672">*</span> g <span style="color:#f92672">+</span> <span style="color:#ae81ff">2.0f</span> <span style="color:#f92672">*</span> g <span style="color:#f92672">*</span> cosTheta;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> numer <span style="color:#f92672">/</span> (<span style="color:#ae81ff">4.0f</span> <span style="color:#f92672">*</span> kPI <span style="color:#f92672">*</span> denom <span style="color:#f92672">*</span> sqrt(denom));
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">dualLobPhase</span>(<span style="color:#66d9ef">float</span> g0, <span style="color:#66d9ef">float</span> g1, <span style="color:#66d9ef">float</span> w, <span style="color:#66d9ef">float</span> cosTheta)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> mix(hgPhase(g0, cosTheta), hgPhase(g1, cosTheta), w);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span> sunPhase <span style="color:#f92672">=</span> dualLobPhase(<span style="color:#ae81ff">0.5</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.5</span>, <span style="color:#ae81ff">0.2</span>, <span style="color:#f92672">-</span>VoL);
+</span></span></code></pre></div><p>Sun Visibility项则需要从步进点开始，向太阳方向做RayMarching，计算透射率作为SunVisibility：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>vec3 sunVisStep <span style="color:#f92672">=</span> stepPosition;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> sunVisibility <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span>(uint j <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; j <span style="color:#f92672">&lt;</span> kStepLight; j<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">float</span> stepLitDensity <span style="color:#f92672">=</span> sampleDensity(sunVisStep);
+</span></span><span style="display:flex;"><span>	sunVisibility <span style="color:#f92672">*=</span> exp(<span style="color:#f92672">-</span>stepLitDensity <span style="color:#f92672">*</span> dStepLight);
+</span></span><span style="display:flex;"><span>	sunVisStep <span style="color:#f92672">+=</span> dStepLight <span style="color:#f92672">*</span> sunDirection;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>完成这个之后，我们的云效果如下：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/image-20230513223736648.png" alt="Image"></p>
+<p>我们需要为体积云增加大气透视效果。</p>
+<p>在前面Marching时，我们同时增加一个Transmittance加权的坐标，便于得到云实体在天空中的位置：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> transmittance <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0f</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>vec3 rayHitPos <span style="color:#f92672">=</span> vec3(<span style="color:#ae81ff">0.0</span>);
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> rayHitPosWeight <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>vec3 stepPosition <span style="color:#f92672">=</span> a;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">while</span>(a<span style="color:#f92672">-&gt;</span>b)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> stepCloudDensity <span style="color:#f92672">=</span> sampleCloud(stepPosition); <span style="color:#75715e">// 采样体积云的密度
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">float</span> stepTransmittance <span style="color:#f92672">=</span> exp(<span style="color:#f92672">-</span>stepCloudDensity <span style="color:#f92672">*</span> dt);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    rayHitPos <span style="color:#f92672">+=</span> samplePos <span style="color:#f92672">*</span> transmittance;
+</span></span><span style="display:flex;"><span>    rayHitPosWeight <span style="color:#f92672">+=</span> transmittance;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    stepPosition <span style="color:#f92672">+=</span> dt <span style="color:#f92672">*</span> dir;
+</span></span><span style="display:flex;"><span>    transmittance <span style="color:#f92672">*=</span> stepTransmittance;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>rayHitPos <span style="color:#f92672">/=</span> rayHitPosWeight;
+</span></span></code></pre></div><p>接下来，用这个位置来计算大气透视并叠加即可：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/image-20230513224145080.png" alt="Image"></p>
+<p>体积云背光现在一片黑色，这是因为我们仅计算了太阳的直接光照。这里我们可以用天空球计算一个球谐光，作为着色时的环境光：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/image-20230513224431079.png" alt="Image"></p>
+<p>此时如果我们调高云的密度，会发现背光处没有任何细节：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/image-20230513225044056.png" alt="Image"></p>
+<p>此时，可以增加一个额外向上方向的Ambient Trace来增加背光部细节：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/image-20230513225059424.png" alt="Image"></p>
+<p>寒霜引擎在17年的slice中还提到了多重散射近似，基本就是额外再计算一次折半衰减的Scattering Light，感觉不是特别的符合物理规律。</p>
+<p>使用多重散射近似时，对于没有Visibility Trace的Ambient Light,  寒霜仅会在第一次散射时叠加，多次叠加将会抹平体积云的细节。</p>
+<p>地平线提出过一个Powder Effect，可以为体积云增加自定义着色细节的功能，我修改调整后如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">powderEffectNew</span>(<span style="color:#66d9ef">float</span> depth, <span style="color:#66d9ef">float</span> height, <span style="color:#66d9ef">float</span> VoL)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> r <span style="color:#f92672">=</span> VoL <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.5</span> <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5</span>;
+</span></span><span style="display:flex;"><span>    r <span style="color:#f92672">=</span> r <span style="color:#f92672">*</span> r;
+</span></span><span style="display:flex;"><span>    height <span style="color:#f92672">=</span> height <span style="color:#f92672">*</span> (<span style="color:#ae81ff">1.0</span> <span style="color:#f92672">-</span> r) <span style="color:#f92672">+</span> r;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> depth <span style="color:#f92672">*</span> height;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> powderEffect;
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> depthProbability <span style="color:#f92672">=</span> pow(
+</span></span><span style="display:flex;"><span>        clamp(stepCloudDensity <span style="color:#f92672">*</span> <span style="color:#ae81ff">10.0</span>, <span style="color:#ae81ff">0.0</span>, <span style="color:#ae81ff">1.0</span>), 
+</span></span><span style="display:flex;"><span>        remap(normalizeHeight, <span style="color:#ae81ff">0.3</span>, <span style="color:#ae81ff">0.85</span>, <span style="color:#ae81ff">0.5</span>, <span style="color:#ae81ff">2.0</span>));
+</span></span><span style="display:flex;"><span>    depthProbability <span style="color:#f92672">+=</span> <span style="color:#ae81ff">0.05</span>;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">float</span> verticalProbability <span style="color:#f92672">=</span> pow(remap(normalizeHeight, <span style="color:#ae81ff">0.07</span>, <span style="color:#ae81ff">0.22</span>, <span style="color:#ae81ff">0.1</span>, <span style="color:#ae81ff">1.0</span>), <span style="color:#ae81ff">0.8</span>);
+</span></span><span style="display:flex;"><span>    powderEffect <span style="color:#f92672">=</span>  powderEffectNew(depthProbability, verticalProbability, VoL);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>我们可以用这个强调银边效果，得到一个火烧云的图：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/20230507224325.png" alt="Image"></p>
+<p>如果把VoL输入修改成-abs(VoL)，则可以得到卡通风格的体积云：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/20230429153335.png" alt="Image"></p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/20230429153326.png" alt="Image"></p>
+<p>直接在云海中也是效果不错的：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/20230508225614.png" alt="Image"></p>
+<p>把密度调低后我们可以得到一个软绵绵的体积云https://www.bilibili.com/video/BV1HA411C7DG：</p>
+<p><img src="/images/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93_assets/202301290.png" alt="Image"></p>
+<p>全部的代码开源：</p>
+<p><a href="https://github.com/qiutang98/flower">https://github.com/qiutang98/flower</a></p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/">UE4.27/5.0 Async Compute异步计算优化简易教程</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">UE4.27实现彩虹六号中的ShadowCache HZB Culling</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E9%AB%98%E8%B4%A8%E9%87%8F%E7%9A%84taa/">高质量静态稳定的TAA改进</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/sssr/">快速收敛的Stochastic Screen Space Reflections</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/">关于Vulkan渲染画面数据杂乱但Renderdoc下正常问题</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

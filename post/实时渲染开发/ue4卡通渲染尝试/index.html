@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> UE4卡通渲染尝试 | 月光下的旅行。 </title>
+  <meta name="description" content="UE4卡通渲染尝试">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/ue4%E5%8D%A1%E9%80%9A%E6%B8%B2%E6%9F%93%E5%B0%9D%E8%AF%95/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >UE4卡通渲染尝试</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2020-11-26T00:00:00Z">November 26, 2020</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+      <a href="/categories/unreal">Unreal</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>这周在捣鼓UE4里的卡通渲染，我已经好久没有接触过卡通渲染了，之前都在弄UE4引擎相关的事情，在离屏特效功能弄好后，正好有空来搞这个UE4的卡通渲染。</p>
+<p>我依稀记得入门图形学就是为了卡渲，但是之前没有啥本事只好老老实实的去学C++和Opengl，还写了一个软光栅渲染器233，找到工作后业余时间在捣鼓离线渲染的路径追踪渲染器，完全没有再管过卡通渲染了。现在重新开始写卡通渲染反而不知到如何下手，不过Unity官方的UnityChan示例非常适合，我把他们的Shader完全抄过来，在UE4中复现。</p>
+<p><img src="/images/UE4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E5%AE%9E%E7%8E%B0GrabPass%E6%8A%93%E5%B1%8F.assets/A.jpeg" alt="Image"></p>
+<p>不过这只是个非常简单的卡通渲染Shader，实际上效果我并不满意，我之前在Github上看到过clion的unity shader库，效果非常好，但是他还没有发布完整的shader库，啊我真的好想快进到他发布的那一天然后把他的Shader一个字不改的全部！全部Copy过来UE4这里！</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/unreal">Unreal</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E9%99%8D%E5%88%86%E8%BE%A8%E7%8E%87%E7%A6%BB%E5%B1%8F%E5%8D%8A%E9%80%8F%E6%98%8E%E6%B8%B2%E6%9F%93%E7%9A%84%E5%9D%91/">UE4.22移动端降分辨率离屏半透明渲染的坑</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22-%E9%92%88%E5%AF%B9%E6%8D%8F%E8%84%B8%E7%9A%84shadowmap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92%E7%AE%97%E6%B3%95%E5%86%8D%E6%94%B9%E8%BF%9B/">虚幻4捏脸的ShadowMap投影包围盒算法再改进</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E5%AE%9E%E7%8E%B0grabpass%E6%8A%93%E5%B1%8F/">虚幻4.22移动端实现GrabPass抓屏</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B7%BB%E5%8A%A0%E4%B8%80%E6%AC%A1z-prepass/">虚幻引擎4.22手机添加一次Z-PrePass</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E7%BA%A7%E8%81%94%E9%98%B4%E5%BD%B1shadowmap%E4%BD%BF%E7%94%A8%E7%8E%87%E8%BF%87%E4%BD%8E%E9%97%AE%E9%A2%98%E4%BF%AE%E5%A4%8D/">虚幻4移动端级联阴影ShadowMap使用率过低问题修复</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

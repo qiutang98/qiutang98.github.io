@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 虚幻4捏脸的ShadowMap投影包围盒算法再改进 | 月光下的旅行。 </title>
+  <meta name="description" content="虚幻4捏脸的ShadowMap投影包围盒算法再改进">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/unreal/ue4.22-%E9%92%88%E5%AF%B9%E6%8D%8F%E8%84%B8%E7%9A%84shadowmap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92%E7%AE%97%E6%B3%95%E5%86%8D%E6%94%B9%E8%BF%9B/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutanguu" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >虚幻4捏脸的ShadowMap投影包围盒算法再改进</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2020-11-18T00:00:00Z">November 18, 2020</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/unreal">Unreal</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>在之前的ShadowMap投影矩阵包围球构造方式改成Fit To Scene后，很好的满足了少量角色投影展示的渲染需求：</p>
+<p><img src="/images/%E6%8D%8F%E8%84%B8%E7%9A%84ShadowMap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92/image-20201122112254087.png" alt="Image"></p>
+<p>左边原生的阴影投影特意把Dynamic Shadow Movable Distance调到最小情况，恰好没有Shadow Cut的情况（当前视角的最小值），但投影Bounds还是因为太大直接跑到屏幕外了233。</p>
+<p>而右边的投影Bounds与Dynamic Shadow Movable Distance无关，仅根据动态投影包围球做计算。</p>
+<p>但现在只是对角色全体Bounds做一次投影，实际上在捏脸环境（相机FOV特别小的时候）中还应该再来一次裁剪。</p>
+<p>我在Fit To Scene的基础上，再根据视锥对角色包围球做一次裁剪，示意图如下：</p>
+<p><img src="/images/%E6%8D%8F%E8%84%B8%E7%9A%84ShadowMap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92/image-20201122113035307.png" alt="Image"></p>
+<p>其中P2是视锥远平面，P1经过包围球中心的平行于P2的一个平面，只需要计算出相机视线与P1的交点，将其作为新的包围球球心，然后根据相机FOV计算出P3,P4,P5,P6，取其截面的最大距离值作为新包围球的半径。</p>
+<p><img src="/images/%E6%8D%8F%E8%84%B8%E7%9A%84ShadowMap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92/image-20201122113918601.png" alt="Image"></p>
+<p>不过新改的这玩意仅适用于角色solo展示，因为它用了相机的视锥来构建Bounds，在下面这种情况下会有问题：</p>
+<p><img src="/images/%E6%8D%8F%E8%84%B8%E7%9A%84ShadowMap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92/image-20201122114806809.png" alt="Image"></p>
+<p>可以看到蓝色的投影范围是视线内的物体bounds构成的，因此，真到游戏里面跑，就应该使用之前的FitToScene方式：</p>
+<p><img src="/images/%E6%8D%8F%E8%84%B8%E7%9A%84ShadowMap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92/image-20201122114928516.png" alt="Image"></p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/unreal">Unreal</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E5%AE%9E%E7%8E%B0grabpass%E6%8A%93%E5%B1%8F/">虚幻4.22移动端实现GrabPass抓屏</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B7%BB%E5%8A%A0%E4%B8%80%E6%AC%A1z-prepass/">虚幻引擎4.22手机添加一次Z-PrePass</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E7%BA%A7%E8%81%94%E9%98%B4%E5%BD%B1shadowmap%E4%BD%BF%E7%94%A8%E7%8E%87%E8%BF%87%E4%BD%8E%E9%97%AE%E9%A2%98%E4%BF%AE%E5%A4%8D/">虚幻4移动端级联阴影ShadowMap使用率过低问题修复</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/substance-painter%E4%B8%8Eue4%E9%85%8D%E5%A5%97shader/">Substance Painter Shader与UE4移动端渲染效果同步</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/">UE4.26 移动端手机Tiled Resolve性能记录</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>
