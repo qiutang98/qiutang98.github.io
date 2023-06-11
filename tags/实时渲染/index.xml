@@ -233,5 +233,14 @@
       <description>首先给出链接：https://github.com/HongHuaFu/Unity-3dsMax-ShaderSamples Max,Maya</description>
     </item>
     
+    <item>
+      <title>游戏中引入更多的色彩 - 实时曝光融合</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E6%9B%9D%E5%85%89%E8%9E%8D%E5%90%88%E5%9C%A8%E6%B8%B8%E6%88%8F%E4%B8%AD%E5%BC%95%E5%85%A5%E6%9B%B4%E5%A4%9A%E7%9A%84%E8%89%B2%E5%BD%A9/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E6%9B%9D%E5%85%89%E8%9E%8D%E5%90%88%E5%9C%A8%E6%B8%B8%E6%88%8F%E4%B8%AD%E5%BC%95%E5%85%A5%E6%9B%B4%E5%A4%9A%E7%9A%84%E8%89%B2%E5%BD%A9/</guid>
+      <description>​ 随着游戏进入HDR时代，光照计算的结果能表示的色彩范围越来越宽广。通常情况下，游戏在HDR 16F线性SRGB色彩空间下做光照计算，然后进行</description>
+    </item>
+    
   </channel>
 </rss>
