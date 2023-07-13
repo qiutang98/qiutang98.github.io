@@ -124,9 +124,9 @@
 </span></span><span style="display:flex;"><span>}
 </span></span><span style="display:flex;"><span>
 </span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_a <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>a, <span style="color:#66d9ef">sizeof</span>(a));
-</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_b <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>a, <span style="color:#66d9ef">sizeof</span>(b));
-</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_c <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>a, <span style="color:#66d9ef">sizeof</span>(c));
-</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_d <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>a, <span style="color:#66d9ef">sizeof</span>(d));
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_b <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>b, <span style="color:#66d9ef">sizeof</span>(b));
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_c <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>c, <span style="color:#66d9ef">sizeof</span>(c));
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_d <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>d, <span style="color:#66d9ef">sizeof</span>(d));
 </span></span></code></pre></div><p>事实上，根据发布模式的不同，abcd计算出来的值都不太一样，在Debug模式下能正常得到相同的Hash值，但是Release模式中则会随机得到不同的值。</p>
 <p>打印出abcd的内存值与其Hash值：</p>
 <p>在debug模式下，Pad部分的内存都被填充为cc，所以hash值计算相同，结果正确：</p>
