@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题 | 月光下的旅行。 </title>
+  <meta name="description" content="C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutang98" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2023-07-12T00:00:00Z">July 12, 2023</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+      &nbsp;
+      
+      <a href="/categories/flower">Flower</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>先前遇到一个Memory Hash计算错误的问题，该结构体如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">BufferIdentifier</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint64_t</span> bufferSize;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span> bufferUsage;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span> type;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span> vmaUsage;
+</span></span><span style="display:flex;"><span>};
+</span></span></code></pre></div><p>我们都知道C++的结构体会选择最大的成员来做内存对齐，因此，该结构体的对齐内存如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">BufferIdentifier</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint64_t</span> bufferSize;   <span style="color:#75715e">// 8
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span> bufferUsage;  <span style="color:#75715e">// 4 + 4
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">uint32_t</span> type;         <span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span> vmaUsage;     <span style="color:#75715e">// 4 + 4
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">//  uint32_t pad
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>};
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// sizeof(BufferIdentifier) == 8 + (4 + 4) + (4 + 4) == 24
+</span></span></span></code></pre></div><p>我使用内存计算其Hash值，如果使用C++20最新的成员初始化方式，或者非显式初始化的方式，Pad部分的内存不会被清零：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span>BufferIdentifier a
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    .bufferSize <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>,
+</span></span><span style="display:flex;"><span>    .bufferUsage <span style="color:#f92672">=</span> <span style="color:#ae81ff">2</span>,
+</span></span><span style="display:flex;"><span>    .type <span style="color:#f92672">=</span> <span style="color:#ae81ff">3</span>,
+</span></span><span style="display:flex;"><span>    .vmaUsage <span style="color:#f92672">=</span> <span style="color:#ae81ff">4</span>,
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>BufferIdentifier b;
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    b.bufferSize <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>    b.bufferUsage <span style="color:#f92672">=</span> <span style="color:#ae81ff">2</span>;
+</span></span><span style="display:flex;"><span>    b.type <span style="color:#f92672">=</span> <span style="color:#ae81ff">3</span>;
+</span></span><span style="display:flex;"><span>    b.vmaUsage <span style="color:#f92672">=</span> <span style="color:#ae81ff">4</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>BufferIdentifier c
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    .bufferSize,
+</span></span><span style="display:flex;"><span>    .bufferUsage,
+</span></span><span style="display:flex;"><span>    .type,
+</span></span><span style="display:flex;"><span>    .vmaUsage,
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>BufferIdentifier d
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    .bufferSize,
+</span></span><span style="display:flex;"><span>    .bufferUsage,
+</span></span><span style="display:flex;"><span>    .type,
+</span></span><span style="display:flex;"><span>    .vmaUsage,
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_a <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>a, <span style="color:#66d9ef">sizeof</span>(a));
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_b <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>a, <span style="color:#66d9ef">sizeof</span>(b));
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_c <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>a, <span style="color:#66d9ef">sizeof</span>(c));
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#66d9ef">auto</span> hashId_d <span style="color:#f92672">=</span> crc<span style="color:#f92672">::</span>crc32(<span style="color:#f92672">&amp;</span>a, <span style="color:#66d9ef">sizeof</span>(d));
+</span></span></code></pre></div><p>事实上，根据发布模式的不同，abcd计算出来的值都不太一样，在Debug模式下能正常得到相同的Hash值，但是Release模式中则会随机得到不同的值。</p>
+<p>打印出abcd的内存值与其Hash值：</p>
+<p>在debug模式下，Pad部分的内存都被填充为cc，所以hash值计算相同，结果正确：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>a: <span style="color:#ae81ff">01</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">02</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">03</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">04</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> cc cc cc cc; crc <span style="color:#ae81ff">119766573</span>
+</span></span><span style="display:flex;"><span>b: <span style="color:#ae81ff">01</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">02</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">03</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">04</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> cc cc cc cc; crc <span style="color:#ae81ff">119766573</span>
+</span></span><span style="display:flex;"><span>c: <span style="color:#ae81ff">01</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">02</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">03</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">04</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> cc cc cc cc; crc <span style="color:#ae81ff">119766573</span>
+</span></span><span style="display:flex;"><span>d: <span style="color:#ae81ff">01</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">02</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">03</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">04</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> cc cc cc cc; crc <span style="color:#ae81ff">119766573</span>
+</span></span></code></pre></div><p>在Release模式下，Pad部分的内存没有被清除过，hash值会随机计算出来不同的值：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>a: <span style="color:#ae81ff">01</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">02</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">03</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">04</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> f7 <span style="color:#ae81ff">7f</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span>; crc <span style="color:#ae81ff">311187229</span>
+</span></span><span style="display:flex;"><span>b: <span style="color:#ae81ff">01</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">02</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">03</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">04</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span>; crc <span style="color:#ae81ff">1452299886</span>
+</span></span><span style="display:flex;"><span>c: <span style="color:#ae81ff">01</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">02</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">03</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">04</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> f7 <span style="color:#ae81ff">7f</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span>; crc <span style="color:#ae81ff">311187229</span>
+</span></span><span style="display:flex;"><span>d: <span style="color:#ae81ff">01</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">02</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">03</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">04</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span> <span style="color:#ae81ff">00</span>; crc <span style="color:#ae81ff">1452299886</span>
+</span></span></code></pre></div><p>有三种解决方法：基本都是初始化时清空整个结构体的内存：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// 显式初始化
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>BufferIdentifier a <span style="color:#f92672">=</span> { }; 
+</span></span><span style="display:flex;"><span>BufferIdentifier b { };   
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 或者在构造函数里把内存清空。
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">BufferIdentifier</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    BufferIdentifier()
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        memset(<span style="color:#66d9ef">this</span>, <span style="color:#ae81ff">0</span>, <span style="color:#66d9ef">sizeof</span>(BufferIdentifier));
+</span></span><span style="display:flex;"><span>    } 
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint64_t</span> bufferSize; 
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span> bufferUsage;  
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span> type;         
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span> vmaUsage;
+</span></span><span style="display:flex;"><span>};
+</span></span></code></pre></div><p>但开发中很难限制开发者写法，<strong>现在，没有开发者在使用C++20时，还会去关心一个POD Struct的初始化问题</strong>；而除了C++20中的成员初始化方式会导致这个问题外，使用Initialize，未显式初始化等写法都会有这种问题。并且这种bug，一但发生就非常的难查原因。</p>
+<p>操蛋的C++&hellip;..</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
+        &nbsp;
+      
+        <a href="/tags/flower">Flower</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/">Vulkan TAA实现与细节</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/">关于Vulkan渲染画面数据杂乱但Renderdoc下正常问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/">Vulkan异步队列与异步纹理上传</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/">Vulkan实现Sample Distribution Shadow Maps</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/">Vulkan CascadeShadowMap中的常见问题与解决方案</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2023 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

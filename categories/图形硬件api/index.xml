@@ -7,7 +7,16 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh-cn</language>
     <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
-    <lastBuildDate>Tue, 29 Mar 2022 00:00:00 +0000</lastBuildDate><atom:link href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 12 Jul 2023 00:00:00 +0000</lastBuildDate><atom:link href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Wed, 12 Jul 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/</guid>
+      <description>先前遇到一个Memory Hash计算错误的问题，该结构体如下： struct BufferIdentifier { uint64_t bufferSize; uint32_t bufferUsage; uint32_t type; uint32_t vmaUsage; }; 我们都知道C++的结构体会选择最大的成员来做内存对齐，</description>
+    </item>
+    
     <item>
       <title>简单实现UE5中的VirtualShadowMap与性能对比</title>
       <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue5%E7%9A%84virtualshadowmap%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86%E4%B8%8E%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94/</link>

@@ -7,7 +7,16 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh-cn</language>
     <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
-    <lastBuildDate>Sun, 28 Nov 2021 00:00:00 +0000</lastBuildDate><atom:link href="/categories/flower/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 12 Jul 2023 00:00:00 +0000</lastBuildDate><atom:link href="/categories/flower/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Wed, 12 Jul 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/</guid>
+      <description>先前遇到一个Memory Hash计算错误的问题，该结构体如下： struct BufferIdentifier { uint64_t bufferSize; uint32_t bufferUsage; uint32_t type; uint32_t vmaUsage; }; 我们都知道C++的结构体会选择最大的成员来做内存对齐，</description>
+    </item>
+    
     <item>
       <title>Vulkan TAA实现与细节</title>
       <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/</link>
