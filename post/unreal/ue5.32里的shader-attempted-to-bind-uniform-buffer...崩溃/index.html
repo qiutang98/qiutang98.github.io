@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> UE5.32里的Shader attempted to bind uniform buffer...崩溃 | 月光下的旅行。 </title>
+  <meta name="description" content="UE5.32里的Shader attempted to bind uniform buffer...崩溃">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutang98" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >UE5.32里的Shader attempted to bind uniform buffer...崩溃</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2024-05-01T00:00:00Z">May 01, 2024</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/unreal">Unreal</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>修改逐Pass的UniformBuffer时，极易触发 Shader attempted to bind uniform buffer &lsquo;%s&rsquo; at slot %s with hash &lsquo;%u&rsquo;, but the shader expected &lsquo;%s&rsquo; with hash &lsquo;%u&rsquo;.检查崩溃，当遇到这种崩溃时，应该首先检查最近的MeshPass的UniformBinding是不是有问题（而不是怀疑SharedDDC的缓存有问题，XD，说的就是我自己）。</p>
+<p>以UE5里的DistortionPass为例，回顾一下修改逐Pass的UniformBuffer步骤，<strong>最重要和容易忽略的地方是第4步</strong>：</p>
+<ol>
+<li>挑选一个Slot, 声明一个自定义的Global Shader Parameter（此处用了SceneTextures），在原Slot类型的基础上额外加上自己的参数：</li>
+</ol>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span>BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FDistortionPassUniformParameters, )
+</span></span><span style="display:flex;"><span>	SHADER_PARAMETER_STRUCT(FSceneTextureUniformParameters, SceneTextures)
+</span></span><span style="display:flex;"><span>	SHADER_PARAMETER(FVector4f, DistortionParams)
+</span></span><span style="display:flex;"><span>END_GLOBAL_SHADER_PARAMETER_STRUCT()
+</span></span></code></pre></div><ol start="2">
+<li>调用实现宏：</li>
+</ol>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>IMPLEMENT_STATIC_UNIFORM_BUFFER_STRUCT(FDistortionPassUniformParameters, <span style="color:#e6db74">&#34;DistortionPass&#34;</span>, SceneTextures);
+</span></span></code></pre></div><ol start="3">
+<li>将新Parameter添加到PassParameter中（如果原来用了SceneTextures，则替换之）:</li>
+</ol>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>BEGIN_SHADER_PARAMETER_STRUCT(FDistortionPassParameters, RENDERER_API)
+</span></span><span style="display:flex;"><span>  SHADER_PARAMETER_STRUCT_INCLUDE(FViewShaderParameters, View)
+</span></span><span style="display:flex;"><span>  SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FDistortionPassUniformParameters, Pass)
+</span></span><span style="display:flex;"><span>  SHADER_PARAMETER_STRUCT_INCLUDE(FInstanceCullingDrawParams, InstanceCullingDrawParams)
+</span></span><span style="display:flex;"><span>  RENDER_TARGET_BINDING_SLOTS()
+</span></span><span style="display:flex;"><span>END_SHADER_PARAMETER_STRUCT()
+</span></span></code></pre></div><ol start="4">
+<li>正确在GraphBuilder中申请并绑定UniformBuffer</li>
+</ol>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>  TRDGUniformBufferRef<span style="color:#f92672">&lt;</span>FDistortionPassUniformParameters<span style="color:#f92672">&gt;</span> CreateDistortionPassUniformBuffer(FRDGBuilder<span style="color:#f92672">&amp;</span> GraphBuilder, <span style="color:#66d9ef">const</span> FViewInfo<span style="color:#f92672">&amp;</span> View)
+</span></span><span style="display:flex;"><span>  {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">auto</span><span style="color:#f92672">*</span> Parameters <span style="color:#f92672">=</span> GraphBuilder.AllocParameters<span style="color:#f92672">&lt;</span>FDistortionPassUniformParameters<span style="color:#f92672">&gt;</span>();
+</span></span><span style="display:flex;"><span>    SetupSceneTextureUniformParameters(GraphBuilder, View.GetSceneTexturesChecked(), View.FeatureLevel, ESceneTextureSetupMode<span style="color:#f92672">::</span>All, Parameters<span style="color:#f92672">-&gt;</span>SceneTextures);
+</span></span><span style="display:flex;"><span>    SetupDistortionParams(Parameters<span style="color:#f92672">-&gt;</span>DistortionParams, View);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> GraphBuilder.CreateUniformBuffer(Parameters);
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">auto</span><span style="color:#f92672">*</span> PassParameters <span style="color:#f92672">=</span> GraphBuilder.AllocParameters<span style="color:#f92672">&lt;</span>FDistortionPassParameters<span style="color:#f92672">&gt;</span>();
+</span></span><span style="display:flex;"><span>  PassParameters<span style="color:#f92672">-&gt;</span>View <span style="color:#f92672">=</span> View.GetShaderParameters();
+</span></span><span style="display:flex;"><span>  PassParameters<span style="color:#f92672">-&gt;</span>Pass <span style="color:#f92672">=</span> CreateDistortionPassUniformBuffer(GraphBuilder, View);
+</span></span></code></pre></div><ol start="4">
+<li><strong>在Shader中，如果原本用到的Slot被替换了，一定要用宏重新声明，指示原来的Slot如何访问（注意此处的宏声明要放在Generated的文件include前面）：</strong></li>
+</ol>
+<p><img src="/images/UE5.32%E9%87%8C%E6%AD%A3%E7%A1%AE%E5%A2%9E%E5%8A%A0%E9%80%90Pass%E7%9A%84UniformBuffer%E7%9A%84%E5%81%9A%E6%B3%95_assets/image-20240502133310997.png" alt="Image"></p>
+<p>​	<strong>如果忘记了重声明，有些材质蓝图里面如果采样了SceneTexture或者其他原本Slot的内容，UE的Shader编译器会再给Shader额外加一个SceneTextures（或其他）的Slot，此时，包括前面我们自己声明的SceneTextures，此处重复了定义了相同Slot的UniformBuffer，在Shader验证阶段的ValidateStaticUniformBuffer函数中，会直接挂掉，报出类似如下的信息：</strong></p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>Shader attempted to bind uniform buffer <span style="color:#960050;background-color:#1e0010">&#39;</span>FVelocityPassUniformParameters<span style="color:#960050;background-color:#1e0010">&#39;</span> at slot [Name: SceneTextures, Slot: <span style="color:#ae81ff">8</span>] with hash <span style="color:#960050;background-color:#1e0010">&#39;</span><span style="color:#ae81ff">96469509</span><span style="color:#960050;background-color:#1e0010">&#39;</span>, but the shader expected <span style="color:#960050;background-color:#1e0010">&#39;</span>LumenFrontLayerTranslucencyGBufferPass<span style="color:#960050;background-color:#1e0010">&#39;</span> with hash <span style="color:#960050;background-color:#1e0010">&#39;</span><span style="color:#ae81ff">13633221</span><span style="color:#960050;background-color:#1e0010">&#39;</span>..
+</span></span></code></pre></div><p>为啥会是LumenFrontLayerTranslucencyGBufferPass，因为它也是SceneTextures的Slot，UE会直接拿上一个相同Slot的补上，所以有时候，这个崩溃也是随机的。</p>
+<p>令人感到蛋疼的是这个崩溃仅运行时需要使用到这个材质时才能触发，打包是可以正常完成的，所以该崩溃很容易让人觉得是SharedDDC的问题，最后都查歪方向了。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/unreal">Unreal</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/">UE5.32抖动半透明兼容TAA时序超分算法的改进方法</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/">UE4.27/5.0 Async Compute异步计算优化简易教程</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">UE4.27实现彩虹六号中的ShadowCache HZB Culling</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-ilc%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E4%B8%8E%E6%B8%B2%E6%9F%93/">UE4.26 ILC加载与渲染</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/">UE4.26 Lightmap从烘焙到渲染</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2024 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>
