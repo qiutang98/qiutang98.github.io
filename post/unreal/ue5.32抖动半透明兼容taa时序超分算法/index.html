@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> UE5.32抖动半透明兼容TAA时序超分算法的改进方法 | 月光下的旅行。 </title>
+  <meta name="description" content="UE5.32抖动半透明兼容TAA时序超分算法的改进方法">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutang98" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >UE5.32抖动半透明兼容TAA时序超分算法的改进方法</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2024-02-18T00:00:00Z">February 18, 2024</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/unreal">Unreal</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>常规的抖动半透明使用噪声（Pattern）抖动Alpha Mask，通过镂空的方式，搭配TAA模拟半透明。</p>
+<p>经常会出现一些Artifact：</p>
+<ol>
+<li>空洞。</li>
+</ol>
+<p><img src="/images/UE5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9TAA%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95_assets/image-20240502121408248.png" alt="Image"></p>
+<ol start="2">
+<li>Pattern的Clip破坏了时序抖动序列的空域连续性，速度、深度和颜色都出现了断层，导致后续TAA经常无法识别出边界区域，极易产生拖尾和鬼影。</li>
+</ol>
+<p><img src="/images/UE5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9TAA%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95_assets/image-20240502121537933.png" alt="Image"></p>
+<ol start="3">
+<li>镂空的区域通过快速抖动方式模拟填充，极易出现能量损失，让画面看起来黯淡不少，同时也能看到廉价的抖动模式。</li>
+</ol>
+<p><img src="/images/UE5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9TAA%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95_assets/image-20240502121633760.png" alt="Image"></p>
+<p>（其实不仅仅是TAA，包括DOF、运动模糊等依赖速度和深度的效果基本都会出错。）</p>
+<p>改进的抖动半透明通过缓存历史帧并重建的做法，能完美避免这些问题：</p>
+<p><img src="/images/UE5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9TAA%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95_assets/Untitled-17146240548932.png" alt="Image"></p>
+<p>下面是一组对比图：</p>
+<p><img src="/images/UE5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9TAA%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95_assets/Untitled2.png" alt="Image"></p>
+<p>渲染需要抖动半透的角色时，按照2x2的Pattern做时序抖动（使用2x2的Pattern可以帮助我们在两帧之间就能拿到全部的场景信息）。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">float</span> <span style="color:#a6e22e">computeOpacity</span>(float2 PixelPos)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> int2 PosMod <span style="color:#f92672">=</span> int2(PixelPos) <span style="color:#f92672">%</span> <span style="color:#ae81ff">2</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">bool</span> bSpecialPos <span style="color:#f92672">=</span> (PosMod.x <span style="color:#f92672">+</span> PosMod.y <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> ((View.FrameNumber <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">1u</span>) <span style="color:#f92672">==</span> <span style="color:#ae81ff">0u</span>) <span style="color:#f92672">?</span> bSpecialPos : (<span style="color:#f92672">!</span>bSpecialPos);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>然后将上一帧的渲染颜色缓存下来。此时我们有如下两张图：</p>
+<p><img src="/images/UE5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9TAA%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95_assets/Untitled3.png" alt="Image"></p>
+<p>从中可以提取出前景色和背景色，然后我们将抖动区域的Alpha写到GBuffer或者GPUScene中，在Shader中读取后，就可以模拟出Alpha半透明混合了：</p>
+<p><img src="/images/UE5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9TAA%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95_assets/Untitled4.png" alt="Image"></p>
+<p>如何判断是chessboard半透明区域？</p>
+<p>读取上一帧相同位置的Alpha值，然后与当前帧的Alpha值比较，若存在一帧有Alpha那么就是Chessboard半透区域。</p>
+<p>注：通常情况下抖动半透明是逐Primitive的Alpha改变，可以存储当前帧的Alpha和上一帧的Alpha到GPUScene中，再通过GBuffer里的PrimitiveID拿到两帧互补的Alpha做判断。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span>Texture2D CurrentSceneColorTexture;
+</span></span><span style="display:flex;"><span>Texture2D PrevSceneColorTexture;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>shader
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">bool</span> bCurrentPixelNoCull <span style="color:#f92672">=</span> IsJitter(CurrentAlpha);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">bool</span> bPrevPixelNoCull    <span style="color:#f92672">=</span> IsJitter(PrevAlpha);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// No pixel jittering so skip this area.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span>((<span style="color:#f92672">!</span>bCurrentPixelNoCull) <span style="color:#f92672">&amp;&amp;</span> (<span style="color:#f92672">!</span>bPrevPixelNoCull))
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        out <span style="color:#f92672">=</span> CurrentColor;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span> 
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Load prev color.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">const</span> float4 PrevColor <span style="color:#f92672">=</span> PrevSceneColorTexture.load();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Composition scene color.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> (bCurrentPixelNoCull)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> Alpha <span style="color:#f92672">=</span> RemapAlpha(CurrentAlpha);
+</span></span><span style="display:flex;"><span>        out <span style="color:#f92672">=</span> lerp(PrevColor, CurrentColor, Alpha);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">else</span>
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> Alpha <span style="color:#f92672">=</span> RemapAlpha(PrevAlpha);
+</span></span><span style="display:flex;"><span>        out <span style="color:#f92672">=</span> lerp(CurrentColor, PrevColor, Alpha);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>在填充完颜色后，也不要忘记对深度和速度做孔洞填充防止TAA鬼影（此处我们不使用上一帧的速度和速度来填充空洞，而是直接拿当前帧的速度和速度图，扩张到隔壁空洞去）。</p>
+<p>由于Pattern固定，可以知道应该采样像素的位置：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>float2 <span style="color:#a6e22e">ChessboardOffsetPos</span>(float2 PixelPos)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> int2 PosMod <span style="color:#f92672">=</span> int2(PixelPos) <span style="color:#f92672">%</span> <span style="color:#ae81ff">2</span>;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// (0, 0) -&gt; (1, 0) = ( 1, 0) 0.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// (1, 0) -&gt; (0, 0) = (-1, 0) 1.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// (0, 1) -&gt; (1, 1) = ( 1, 0) 2.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// (1, 1) -&gt; (0, 1) = (-1, 0) 3.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">const</span> float2 kOffset2x2[<span style="color:#ae81ff">4</span>] <span style="color:#f92672">=</span> 
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        float2( <span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">0</span>),
+</span></span><span style="display:flex;"><span>        float2(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">0</span>),
+</span></span><span style="display:flex;"><span>        float2( <span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">0</span>),
+</span></span><span style="display:flex;"><span>        float2(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">0</span>),
+</span></span><span style="display:flex;"><span>    };
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> kOffset2x2[PosMod.x <span style="color:#f92672">+</span> PosMod.y <span style="color:#f92672">*</span> <span style="color:#ae81ff">2</span>];
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>速度和深度的孔洞填充如下：</p>
+<p><img src="/images/UE5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9TAA%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95_assets/Untitled6.png" alt="Image"></p>
+<p>虽然有些拉伸，但提供给TAA或者其他时域超分算法，用来防止拖尾，已经是足够了。</p>
+<p>此时，由于重建了完整的速度和速度，颜色也支持混合在了一起，角色抖动的行为类似于绘制了速度的半透明物体，能正常在超分、DOF和运动模糊中渲染。</p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+        <a href="/tags/unreal">Unreal</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/">UE4.27/5.0 Async Compute异步计算优化简易教程</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">UE4.27实现彩虹六号中的ShadowCache HZB Culling</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-ilc%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E4%B8%8E%E6%B8%B2%E6%9F%93/">UE4.26 ILC加载与渲染</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/">UE4.26 Lightmap从烘焙到渲染</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/ue4%E5%8D%A1%E9%80%9A%E6%B8%B2%E6%9F%93%E5%B0%9D%E8%AF%95/">UE4卡通渲染尝试</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2024 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>
