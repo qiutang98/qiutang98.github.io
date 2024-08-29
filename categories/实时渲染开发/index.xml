@@ -7,7 +7,16 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh-cn</language>
     <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
-    <lastBuildDate>Sun, 11 Jun 2023 00:00:00 +0000</lastBuildDate><atom:link href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 29 Aug 2024 00:00:00 +0000</lastBuildDate><atom:link href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>My Nanite: 从零开始实现Nanite风格的网格渲染器</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/</link>
+      <pubDate>Thu, 29 Aug 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/</guid>
+      <description>虚幻引擎5里最吸引人的新特性莫过于Nanite。它可以自动的生成和无缝切换网格LOD，处理海量三角形并且让游戏保持一个较高的帧率。 本文介绍了</description>
+    </item>
+    
     <item>
       <title>为游戏引入更多的色彩：实时曝光融合</title>
       <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E6%9B%9D%E5%85%89%E8%9E%8D%E5%90%88%E5%9C%A8%E6%B8%B8%E6%88%8F%E4%B8%AD%E5%BC%95%E5%85%A5%E6%9B%B4%E5%A4%9A%E7%9A%84%E8%89%B2%E5%BD%A9/</link>

@@ -7,7 +7,16 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh-cn</language>
     <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
-    <lastBuildDate>Wed, 01 May 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 29 Aug 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>My Nanite: 从零开始实现Nanite风格的网格渲染器</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/</link>
+      <pubDate>Thu, 29 Aug 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/</guid>
+      <description>虚幻引擎5里最吸引人的新特性莫过于Nanite。它可以自动的生成和无缝切换网格LOD，处理海量三角形并且让游戏保持一个较高的帧率。 本文介绍了</description>
+    </item>
+    
     <item>
       <title>UE5.32里的Shader attempted to bind uniform buffer...崩溃</title>
       <link>/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/</link>

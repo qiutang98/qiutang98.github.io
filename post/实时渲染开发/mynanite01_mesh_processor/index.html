@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> My Nanite: 从零开始实现Nanite风格的网格渲染器 | 月光下的旅行。 </title>
+  <meta name="description" content="My Nanite: 从零开始实现Nanite风格的网格渲染器">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/unreal"> Unreal</a>
+      
+      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutang98" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >My Nanite: 从零开始实现Nanite风格的网格渲染器</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2024-08-29T00:00:00Z">August 29, 2024</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91">实时渲染开发</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>虚幻引擎5里最吸引人的新特性莫过于Nanite。它可以自动的生成和无缝切换网格LOD，处理海量三角形并且让游戏保持一个较高的帧率。</p>
+<p>本文介绍了实现Nanite过程中的一些技术细节。一些用处较小的特性（软光栅化）、一些和引擎其他功能耦合比较重的特性（IO和压缩）则跳过。而Nanite中的Material Passes，则被替换成更加现代化的、基于Bindless的实现。</p>
+<h2 id="网格预处理">网格预处理</h2>
+<p>与新出的Mesh Shader管线的渲染流程相同，Nanite将临近的128个三角形组织成Cluster（或者称为Meshlet)，每个网格都切割为多个Cluster。</p>
+<p>LOD在Cluster Group级别上构建，Nanite描述了一种名为DAG Cluster Group LOD的层次结构，具体细节请查看：</p>
+<p><a href="https://www.youtube.com/watch?v=eviSykqSUUw">https://www.youtube.com/watch?v=eviSykqSUUw</a></p>
+<p>本文的DAG Cluster Group LOD处理流程：Cluster(Meshlet)划分、网格简化使用MeshOptimizer库，Cluster Group划分使用Metis库。</p>
+<p>值得注意的是：网格简化时，<strong>输入的三角形列表要求拓扑连续</strong>，否则网格无法继续简化下去。</p>
+<p>网格的三角形一般拓扑连续，但某些特殊的原因下（UV镜像，美术要卡硬边法线等），要分裂出额外的顶点，分裂出来的顶点会卡住MeshOptimizer的网格简化，导致分裂边附近的三角形将无法继续简化下去。</p>
+<p><img src="/images/nanite/image-20240828165624285.png" alt="Image"></p>
+<p>这种情况属于正常现象。</p>
+<p>还有一种在Blender中被称为Loose Geometry的网格，在编辑模式中拖拽其中一个三角形，可以看到它根本和其他三角形无任何链接关系。（下图左侧为Loose Geometry，右侧为修复后的网格）</p>
+<p><img src="/images/nanite/image-20240828170949784.png" alt="Image"></p>
+<p>MeshOptimizer的网格简化对这种网格无能为力，不过修复起来也很快，仅需在编辑模式下选中所有的Loose Geometry，然后在网格级别让它们按照距离做融合即可。</p>
+<p><img src="/images/nanite/image-20240828171803761.png" alt="Image"></p>
+<p>构建DAG Cluster Group LOD的几大步骤：</p>
+<ol>
+<li>使用meshoptimizer，按每128个三角形一个Cluster的做法，将原始网格切割为N个Cluster。</li>
+<li>使用Metis将相邻的2 - 4个Cluster划分为一个Cluster Group。</li>
+<li>合并Cluster Group里面的所有Cluster的三角形，使用meshoptimizer简化合并得到的网格。（简化过程中锁住边界，简化率为50%的三角形）</li>
+<li>使用meshoptimizer，按每128个三角形一个Cluster的做法，将简化后的网格切割为N/2个Cluster，若此时的Cluster数目 &gt; 2，跳到第二步。</li>
+</ol>
+<p>第二步中需要到对Cluster列表构建空间上的临接关系图表：</p>
+<p>以每个Cluster作为图里的一个顶点，图里的边则是两个相邻Cluster之间三角形连接边（可能存在多条边）。</p>
+<p>如下图所示，Cluster #0 与 Cluster #1 临接，它们之间的连接边（红色三角形边）有多个。</p>
+<p><img src="/images/nanite/image-20240828203335605.png" alt="Image"></p>
+<p>关键点在于找到每条三角形边周围有哪些Meshlet(Vert)，每个Meshlet(Vert)拥有哪些边，可以用两个Map表示，构建伪代码如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>map<span style="color:#f92672">&lt;</span>edge, set<span style="color:#f92672">&lt;</span>meshlet<span style="color:#f92672">&gt;&gt;</span> edge2meshlets;
+</span></span><span style="display:flex;"><span>map<span style="color:#f92672">&lt;</span>meshlet, set<span style="color:#f92672">&lt;</span>edge<span style="color:#f92672">&gt;&gt;</span> meshlet2edges;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span> (meshlet : meshlets)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> (triangle : meshlet.triangles)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (triangle_edge : triangle.edges)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            uint v0 <span style="color:#f92672">=</span> hash_pos(triangle_edge.pos[<span style="color:#ae81ff">0</span>]);
+</span></span><span style="display:flex;"><span>            uint v1 <span style="color:#f92672">=</span> hash_pos(triangle_edge.pos[<span style="color:#ae81ff">1</span>]);
+</span></span><span style="display:flex;"><span>            
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// Edge为无向边，与顶点顺序无关，这样才能作为两个三角形的共享边
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            edge.p0 <span style="color:#f92672">=</span> min(v0, v1);
+</span></span><span style="display:flex;"><span>            edge.p1 <span style="color:#f92672">=</span> max(v0, v1);
+</span></span><span style="display:flex;"><span>     
+</span></span><span style="display:flex;"><span>            edge2meshlets[edge].insert(meshlet);
+</span></span><span style="display:flex;"><span>			meshlet2edges[meshletIndex].insert(edge);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>接下来将其转化为Metis要求的xadj和adjncy数组格式：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// xadj和adjncy的具体含义：
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">for</span> (uint vert_a <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; vert_a <span style="color:#f92672">&lt;</span> vert_count; vert_a <span style="color:#f92672">++</span>) <span style="color:#75715e">// vert is meshlet
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> (uint adjVert <span style="color:#f92672">=</span> xadj[vert_a]; adjVert <span style="color:#f92672">&lt;</span> xadj[vert_a <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>]; adjVert<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        uint vert_b <span style="color:#f92672">=</span> adjncy[adjVert];
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// Now get edge: (vert_a, vert_b)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 构建xadj和adjncy
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>vector<span style="color:#f92672">&lt;</span>uint<span style="color:#f92672">&gt;</span> adjncy;
+</span></span><span style="display:flex;"><span>vector<span style="color:#f92672">&lt;</span>uint<span style="color:#f92672">&gt;</span> xadj;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span> (meshlet : meshlets)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    offset <span style="color:#f92672">=</span> adjncy.size();
+</span></span><span style="display:flex;"><span>	xadj.push_back(offset); <span style="color:#75715e">// 新顶点
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> (edge : meshlet2edges[meshlet]) <span style="color:#75715e">// 遍历meshlet里的所有边
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (adjMeshlet : edge2meshlets[edge])
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span>(adjMeshlet <span style="color:#f92672">!=</span> meshlet) <span style="color:#75715e">// 连接到其他顶点
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            {
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">if</span> (not found adjMeshlet between adjncy[offset] and adjncy.end)
+</span></span><span style="display:flex;"><span>                {
+</span></span><span style="display:flex;"><span>                    adjncy.add(adjMeshlet);
+</span></span><span style="display:flex;"><span>                }
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>xadj.push_back(adjncy.size()); <span style="color:#75715e">// 结束边界
+</span></span></span></code></pre></div><p>此时即可调用METIS_PartGraphKway函数做分组划分了。</p>
+<p>在第三步中，网格时使用meshopt_SimplifyLockBorder标记让网格简化过程中保留边界。</p>
+<p>使用meshopt_SimplifyErrorAbsolute标记确保网格的简化误差在世界空间内，target_error需要乘上meshopt_simplifyScale的结果转换到世界空间。（每次调用meshopt_simplify后，默认得到是相对于上一个层级网格的相对误差，如果连续生成多级LOD，那么还要小心处理它们的单位转换，直接使用绝对坐标误差标记可以省掉这个繁琐的转换问题。）</p>
+<h2 id="lod选择">LOD选择</h2>
+<p>meshopt_simplify使用类似Quadric Error Metrics简化算法，得到的Error大致能代表简化后的顶点与原表面的距离。</p>
+<p>将以Cluster Group网格中心为原点，Error为半径的误差小球投影到屏幕空间上，若其半径小于一个像素，此时可以认为切换为当前LOD是无损的。</p>
+<p>Nanite还为每个Cluster Group存储了其父节点的Error（Parent Error），将Parent Error小球也投影到屏幕上，与ClusterGroup本身的Error一起搭配，即可唯一确定应该使用哪个级别LOD。</p>
+<p><img src="/images/nanite/image-20240828220821058.png" alt="Image"></p>
+<p>我不太清除Nanite的ParentError/ClusterError投影方式是否有做啥特殊处理，用刚刚描述的做法，是无法确保ParentError永远大于ClusterError。</p>
+<p><img src="/images/nanite/image-20240828221755371.png" alt="Image"></p>
+<p>如图所示，parent因为是多个Cluster集合而成，所以parent网格中心可能位于某个Cluster的网格中心之后，在近大远小的原则下，如果parent的error半径没有增长太多，很有可能出现projected parent error &lt; projected cluster error的情况。</p>
+<p>但即使如此，Nanite描述的公式依旧生效，出现projected parent error &lt; projected cluster error的情况时，该LOD级别被剔除，我们直接使用下一级别的LOD即可。</p>
+<p>此时能确保LOD的position是无缝切换，但是无法让法线和光照也无缝切换（仅考虑了位置相关的Error)</p>
+<p><img src="/images/nanite/lightingLOD.gif" alt="Image"></p>
+<p>上图中左侧为Unlit BaseColor，右侧为法线光照，可以发现左侧可以无缝切换，但是右侧光照明显突变。</p>
+<p>幸运的是MeshOptimizer也支持属性权重的LOD简化（meshopt_simplifyWithAttributes），将UV/法线/切线的w分量也加入到网格的简化考虑因素中可以大大减少这种问题：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">constexpr</span> uint32 kAttributeCount <span style="color:#f92672">=</span> <span style="color:#ae81ff">9</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> attributeWeights[kAttributeCount] <span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#ae81ff">0.05f</span>, <span style="color:#ae81ff">0.05f</span>, <span style="color:#75715e">// uv
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#ae81ff">0.5f</span>, <span style="color:#ae81ff">0.5f</span>, <span style="color:#ae81ff">0.5f</span>, <span style="color:#75715e">// normal
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#ae81ff">0.001f</span>, <span style="color:#ae81ff">0.001f</span>, <span style="color:#ae81ff">0.001f</span>, <span style="color:#ae81ff">0.05f</span> <span style="color:#75715e">// tangent, .w is sign, weight bigger.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>};
+</span></span><span style="display:flex;"><span>meshopt_simplifyWithAttributes(...attributeWeights);
+</span></span></code></pre></div><h2 id="bvh加速遍历">BVH加速遍历</h2>
+<p>Nanite这种DAG组织形式，导致切出来的Cluster非常多，如何快速遍历也是一个问题。Nanite提出使用BVH来加速遍历。</p>
+<p>根据前面的描述，如果一个Cluster Group，若它的Projected Parent Error &lt;= 一个像素，那么则可以将其剔除。</p>
+<p>把前面切出来的所有的Cluster Group Parent Error小球都放在世界空间中，构建BVH树。</p>
+<p><img src="/images/nanite/image-20240828225742792.png" alt="Image"></p>
+<p>如上图所示，（蓝色球）父节点的Sphere Projected永远都比它的子节点（蓝色球内的红色球）的Sphere Projected半径要大，所以若父节点的Projected Sphere Radius &lt;= 一个像素，那么子节点的Parent Error是必定小于一个像素的，可以直接剔除。</p>
+<p>但比起直接遍历全部的Cluster Group，在GPU上遍历一颗BVH属实怎么写都很慢。</p>
+<p>Nanite使用一种Persistent Thread + Parallel Queue的GPU编程技巧来均衡BVH的遍历性能：申请足够多的线程，在一次大循环中不停的检视BVH Node和做Cluster可见性剔除，这里大概分享下我的实现思路。（原始实现）</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>globallycoherent RWStructuredBuffer<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">int</span><span style="color:#f92672">&gt;</span> rwBVHUncheckedNodeCount; <span style="color:#75715e">// 待检查的BVH节点数
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 待消费的BVH Noded队列，不可用的Node用~0填充，.x为object id, .y为bvh node id.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>globallycoherent RWStructuredBuffer<span style="color:#f92672">&lt;</span>uint2<span style="color:#f92672">&gt;</span> rwNode; 
+</span></span><span style="display:flex;"><span>globallycoherent RWStructuredBuffer<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">int</span><span style="color:#f92672">&gt;</span>   rwProduce;
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// Instance Culling会填充RootNode, rwProduce
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 已经消费的BVH Node数目，默认为0
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>globallycoherent RWStructuredBuffer<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">int</span><span style="color:#f92672">&gt;</span>   rwConsume; 
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>[<span style="color:#ae81ff">64</span>, <span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">1</span>]
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> main()
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    uint bvhNodeCountNeedCheck;
+</span></span><span style="display:flex;"><span>    uint consumeBVHNodeId <span style="color:#f92672">=</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">while</span> (true)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>        uint objectId <span style="color:#f92672">=</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    	uint nodeId   <span style="color:#f92672">=</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 检查中断条件
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        InterlockedMax(rwBVHUncheckedNodeCount, <span style="color:#ae81ff">0</span>, bvhNodeCountNeedCheck);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">bool</span> bAllBVHNodeChecked <span style="color:#f92672">=</span> (bvhNodeCountNeedCheck <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (bAllBVHNodeChecked) { <span style="color:#66d9ef">break</span>; }
+</span></span><span style="display:flex;"><span>         
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (consumeBVHNodeId <span style="color:#f92672">==</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            InterlockedAdd(rwConsume, <span style="color:#ae81ff">1</span>, consumeBVHNodeId);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (consumeBVHNodeId <span style="color:#f92672">&lt;</span> kMaxNodeCount)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            uint2 cmd <span style="color:#f92672">=</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>            InterlockedExchange(rwNode[consumeBVHNodeId].x, <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>, cmd.x);
+</span></span><span style="display:flex;"><span>            InterlockedExchange(rwNode[consumeBVHNodeId].y, <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>, cmd.y);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (any(cmd <span style="color:#f92672">!=</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>))
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 自旋直到当前节点全部信息可用
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#66d9ef">while</span> (cmd.x <span style="color:#f92672">==</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>) 
+</span></span><span style="display:flex;"><span>                { InterlockedExchange(rwNode[consumeBVHNodeId].x, <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>, cmd.x); }
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">while</span> (cmd.y <span style="color:#f92672">==</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>) 
+</span></span><span style="display:flex;"><span>                { InterlockedExchange(rwNode[consumeBVHNodeId].y, <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>, cmd.y); }
+</span></span><span style="display:flex;"><span>                
+</span></span><span style="display:flex;"><span>                objectId <span style="color:#f92672">=</span> cmd.x;
+</span></span><span style="display:flex;"><span>                nodeId   <span style="color:#f92672">=</span> cmd.y;
+</span></span><span style="display:flex;"><span>                
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 当前节点被消费，重置便于下次循环再次申请。
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                consumeBVHNodeId  <span style="color:#f92672">=</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (objectId <span style="color:#f92672">!=</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span> <span style="color:#f92672">&amp;&amp;</span> nodeId <span style="color:#f92672">!=</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            node <span style="color:#f92672">=</span> load(objectid, nodeid);
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">bool</span> bVisibile <span style="color:#f92672">=</span> culled(node);
+</span></span><span style="display:flex;"><span>            
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 若不可见直接拒绝全部子节点
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            InterlockedAdd(rwBVHUncheckedNodeCount, bVisibile <span style="color:#f92672">?</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span> <span style="color:#f92672">:</span> <span style="color:#f92672">-</span>node.bvhNodeCount);
+</span></span><span style="display:flex;"><span>            
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (bVisibile)
+</span></span><span style="display:flex;"><span>            {
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">for</span> (child : node.children)
+</span></span><span style="display:flex;"><span>                {
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// 生成新的节点供其他线程消费
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>					InterlockedAdd(rwProduce, <span style="color:#ae81ff">1</span>, i);
+</span></span><span style="display:flex;"><span>                    InterlockedExchange(rwNode[i].x, child.objectId);
+</span></span><span style="display:flex;"><span>					InterlockedExchange(rwNode[i].y, child.nodeId);
+</span></span><span style="display:flex;"><span>                }
+</span></span><span style="display:flex;"><span>                
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">for</span> (meshletGroup : node.meshletGroups)
+</span></span><span style="display:flex;"><span>                {
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// 剔除和存储node里的meshletGroups.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                }
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">else</span>
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 空载...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        }
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>这里需要小心使用各种原子操作，不然很容易就会死锁。</p>
+<h3 id="优化性能">优化性能</h3>
+<p><strong>（版本一）</strong></p>
+<p>均衡每个BVH子节点数目，默认每个父节点有8个子节点。</p>
+<p><strong>一个线程组中仅在第一个线程做Consume操作</strong>。如下图为例：第一次仅 Thread #0 有BVH Node需要计算：</p>
+<p><img src="/images/nanite/image-20240829100825170.png" alt="Image"></p>
+<p>若其可见，则生产出8个子节点，我们存到GroupShared内存里，下次循环中分配给8个线程：</p>
+<p><img src="/images/nanite/image-20240829100951508.png" alt="Image"></p>
+<p>再次可见的子节点最多生产出64个，正好占满全部的线程：</p>
+<p><img src="/images/nanite/image-20240829101113738.png" alt="Image"></p>
+<p>此时，如果再次可见的子节点溢出64个，才需要写入到Device内存中，让其它空转的线程组也发动起来。</p>
+<p>这样能减少大量的原子操作和Device内存通讯，增加不少性能。</p>
+<p><strong>（版本二）</strong></p>
+<p>此时仍会有负载不均衡的情况，在没有BVH Node消费时，线程在空转。</p>
+<p>增加一个Meshlet Culling的队列，我们不会在Node遍历时做计算繁重的Meshlet剔除，而是直接放到Device内存里让其它空转的线程来消费：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// 待消费的Meshlet队列，默认~0填充，.x为object id, .y为meshlet id.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>globallycoherent RWStructuredBuffer<span style="color:#f92672">&lt;</span>uint2<span style="color:#f92672">&gt;</span> rwNode; 
+</span></span><span style="display:flex;"><span>globallycoherent RWStructuredBuffer<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">int</span><span style="color:#f92672">&gt;</span>   rwProduce;
+</span></span><span style="display:flex;"><span>globallycoherent RWStructuredBuffer<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">int</span><span style="color:#f92672">&gt;</span>   rwConsume; 
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">if</span> (objectId <span style="color:#f92672">!=</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span> <span style="color:#f92672">&amp;&amp;</span> nodeId <span style="color:#f92672">!=</span> <span style="color:#f92672">~</span><span style="color:#ae81ff">0</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (bVisibile)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// ...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (meshletGroup : node.meshletGroups)
+</span></span><span style="display:flex;"><span>        {
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 生成新的Meshlet供其他线程消费
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            InterlockedAdd(rwProduce, <span style="color:#ae81ff">1</span>, i);
+</span></span><span style="display:flex;"><span>            InterlockedExchange(rwNode[i].x, meshletGroup.objectId);
+</span></span><span style="display:flex;"><span>            InterlockedExchange(rwNode[i].y, meshletGroup.meshletid);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">else</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// 消费Meshlet Node并做剔除计算。
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	InterlockedAdd(rwConsume, <span style="color:#ae81ff">1</span>, consumeMeshletId);
+</span></span><span style="display:flex;"><span>	
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Load and compute visibility...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
+</span></span></code></pre></div><p>基本消除了大部分空载。</p>
+<p>这里可以用一些Wave指令来减少原子操作，比如仅在第一个Lane做消费操作，再把id广播到其它Lane。</p>
+<p>虽然做了这么多操作，但性能说实话一般233（Bistro场景，3070Ti）：</p>
+<p><img src="/images/nanite/image-20240829103724482.png" alt="Image"></p>
+<h2 id="两次hzb剔除">两次HZB剔除</h2>
+<p>与传统的HZB剔除（延迟一帧回读可见性）不同，第一次使用Prev HZB做剔除时，一定要用上一帧的MVP矩阵：</p>
+<p><img src="/images/nanite/image-20240829104617583.png" alt="Image"></p>
+<p>这样可以避免相机靠近物体时，Prev HZB无法挡住不断变大的物体，Stage#0额外多画了一些不必要的网格。</p>
+<p>Tips#0: HZB构建使用AMD SPD相同的技巧，在一次Pass中完成全部级别的Mip。</p>
+<p>Tips#1: 如果没有使用Invert Z，并且HZB的格式是16Bit的，需要手动对32Bit的深度做Ceil，才能保证结果正确：</p>
+<p><img src="/images/nanite/image-20240829110652329.png" alt="Image"></p>
+<h2 id="visbility-buffer">Visbility Buffer</h2>
+<p>与Nanite相同，使用Mesh Shader做Visibility Buffer生成，这样可以减少不必要的Buffer Write/Store，同时也不用维护一个未知大小的Index Buffer和Vertex Buffer。</p>
+<p>在Mesh Shader中可以做一些三角形级别的剔除：</p>
+<p>Back face剔除：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// Olano97: Triangle Scan Conversion using 2D Homogeneous Coordinates
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>bCulled <span style="color:#f92672">=</span> determinant(float3x3(positionHS_0.xyw, positionHS_1.xyw, positionHS_2.xyw)) <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0</span>;
+</span></span></code></pre></div><p>Near plane剔除：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>bCulled <span style="color:#f92672">=</span> (positionHS_0.w <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">&amp;&amp;</span> positionHS_1.w<span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">&amp;&amp;</span> positionHS_2.w <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0</span>);
+</span></span></code></pre></div><p>视锥剔除：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">// Now cast to screen space.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">const</span> float2 uv_0 <span style="color:#f92672">=</span> positionHS_0.xy <span style="color:#f92672">/</span> abs(positionHS_0.w) <span style="color:#f92672">*</span> float2(<span style="color:#ae81ff">0.5</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.5</span>) <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> float2 uv_1 <span style="color:#f92672">=</span> positionHS_1.xy <span style="color:#f92672">/</span> abs(positionHS_1.w) <span style="color:#f92672">*</span> float2(<span style="color:#ae81ff">0.5</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.5</span>) <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> float2 uv_2 <span style="color:#f92672">=</span> positionHS_2.xy <span style="color:#f92672">/</span> abs(positionHS_2.w) <span style="color:#f92672">*</span> float2(<span style="color:#ae81ff">0.5</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">0.5</span>) <span style="color:#f92672">+</span> <span style="color:#ae81ff">0.5</span>; 
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> float2 maxUv <span style="color:#f92672">=</span> max(uv_0, max(uv_1, uv_2));
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> float2 minUv <span style="color:#f92672">=</span> min(uv_0, min(uv_1, uv_2));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">if</span> (<span style="color:#f92672">!</span>bCulled)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    bCulled <span style="color:#f92672">=</span> any(minUv <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">1</span>) <span style="color:#f92672">||</span> any(maxUv <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0</span>);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>小三角形剔除（没有位于任意一个着色中心点）：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">if</span> (<span style="color:#f92672">!</span>bCulled)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> float2 maxScreenPosition <span style="color:#f92672">=</span> maxUv <span style="color:#f92672">*</span> perView.renderDimension.xy;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> float2 minScreenPosition <span style="color:#f92672">=</span> minUv <span style="color:#f92672">*</span> perView.renderDimension.xy;
+</span></span><span style="display:flex;"><span>    bCulled <span style="color:#f92672">=</span> any(round(minScreenPosition) <span style="color:#f92672">==</span> round(maxScreenPosition));
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Visibility Buffer仅需存储 8Bit的三角形Id, 24 Bit的ClusterId，共计花费32Bit。</p>
+<h2 id="material-pass-emit-gbuffer">Material Pass (Emit GBuffer)</h2>
+<p>按照8x8大小划分材质Tile，逐材质注入GBuffer。</p>
+<p>使用变体隔开不同的材质，每个材质一次Dispatch，这样能最大化计算时的UAV Overlap。</p>
+<p>由于仅存储了VisibilityBuffer，此时需要重新加载三角形计算其重心坐标与偏导数，手动插值：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">Barycentrics</span>
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    float3 interpolation;
+</span></span><span style="display:flex;"><span>    float3 ddx;
+</span></span><span style="display:flex;"><span>    float3 ddy;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// From Unreal Engine 5 Nanite.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// Improved perspective correct barycentric coordinates and partial derivatives using screen derivatives.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>Barycentrics <span style="color:#a6e22e">calculateTriangleBarycentrics</span>(
+</span></span><span style="display:flex;"><span>    float2 PixelClip, 
+</span></span><span style="display:flex;"><span>    float4 PointClip0, 
+</span></span><span style="display:flex;"><span>    float4 PointClip1, 
+</span></span><span style="display:flex;"><span>    float4 PointClip2, 
+</span></span><span style="display:flex;"><span>    float2 ViewInvSize)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	Barycentrics barycentrics;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 RcpW <span style="color:#f92672">=</span> rcp(float3(PointClip0.w, PointClip1.w, PointClip2.w));
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 Pos0 <span style="color:#f92672">=</span> PointClip0.xyz <span style="color:#f92672">*</span> RcpW.x;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 Pos1 <span style="color:#f92672">=</span> PointClip1.xyz <span style="color:#f92672">*</span> RcpW.y;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 Pos2 <span style="color:#f92672">=</span> PointClip2.xyz <span style="color:#f92672">*</span> RcpW.z;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 Pos120X <span style="color:#f92672">=</span> float3(Pos1.x, Pos2.x, Pos0.x);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 Pos120Y <span style="color:#f92672">=</span> float3(Pos1.y, Pos2.y, Pos0.y);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 Pos201X <span style="color:#f92672">=</span> float3(Pos2.x, Pos0.x, Pos1.x);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 Pos201Y <span style="color:#f92672">=</span> float3(Pos2.y, Pos0.y, Pos1.y);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 C_dx <span style="color:#f92672">=</span> Pos201Y <span style="color:#f92672">-</span> Pos120Y;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 C_dy <span style="color:#f92672">=</span> Pos120X <span style="color:#f92672">-</span> Pos201X;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 C <span style="color:#f92672">=</span> C_dx <span style="color:#f92672">*</span> (PixelClip.x <span style="color:#f92672">-</span> Pos120X) <span style="color:#f92672">+</span> C_dy <span style="color:#f92672">*</span> (PixelClip.y <span style="color:#f92672">-</span> Pos120Y);	
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 G <span style="color:#f92672">=</span> C <span style="color:#f92672">*</span> RcpW;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> H <span style="color:#f92672">=</span> dot(C, RcpW);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> RcpH <span style="color:#f92672">=</span> rcp(H);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	barycentrics.interpolation <span style="color:#f92672">=</span> G <span style="color:#f92672">*</span> RcpH;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 G_dx <span style="color:#f92672">=</span> C_dx <span style="color:#f92672">*</span> RcpW;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> float3 G_dy <span style="color:#f92672">=</span> C_dy <span style="color:#f92672">*</span> RcpW;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> H_dx <span style="color:#f92672">=</span> dot(C_dx, RcpW);
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">float</span> H_dy <span style="color:#f92672">=</span> dot(C_dy, RcpW);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	barycentrics.ddx <span style="color:#f92672">=</span> (G_dx <span style="color:#f92672">*</span> H <span style="color:#f92672">-</span> G <span style="color:#f92672">*</span> H_dx) <span style="color:#f92672">*</span> (RcpH <span style="color:#f92672">*</span> RcpH) <span style="color:#f92672">*</span> ( <span style="color:#ae81ff">2.0f</span> <span style="color:#f92672">*</span> ViewInvSize.x);
+</span></span><span style="display:flex;"><span>	barycentrics.ddy <span style="color:#f92672">=</span> (G_dy <span style="color:#f92672">*</span> H <span style="color:#f92672">-</span> G <span style="color:#f92672">*</span> H_dy) <span style="color:#f92672">*</span> (RcpH <span style="color:#f92672">*</span> RcpH) <span style="color:#f92672">*</span> (<span style="color:#f92672">-</span><span style="color:#ae81ff">2.0f</span> <span style="color:#f92672">*</span> ViewInvSize.y);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> barycentrics;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// Usage:
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#75715e">/*
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">float2 meshUv = 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	triangleInfo.uv[0] * barycentric.x + 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	triangleInfo.uv[1] * barycentric.y + 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	triangleInfo.uv[2] * barycentric.z;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">float2 meshUv_ddx = 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	triangleInfo.uv[0] * ddx.x + 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	triangleInfo.uv[1] * ddx.y + 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	triangleInfo.uv[2] * ddx.z;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">float2 meshUv_ddy = 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	triangleInfo.uv[0] * ddy.x + 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	triangleInfo.uv[1] * ddy.y + 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	triangleInfo.uv[2] * ddy.z;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">	
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">baseColor = texture.SampleGrad(sampler, meshUv, meshUv_ddx, meshUv_ddy);
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">*/</span>
+</span></span></code></pre></div><h3 id="优化性能-1">优化性能</h3>
+<p>可视化场景中的三角形：</p>
+<p><img src="/images/nanite/image-20240829121515434.png" alt="Image"></p>
+<p>一种直观的想法是：</p>
+<p>有些Wave内使用同一个三角形，因此，加载三角形时是否可以复用其它Lane的三角形信息，减少带宽消耗？</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>TriangleMiscInfo triangleInfo;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#if ENABLE_WAVE_LOCAL_SHUFFLE
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">const</span> uint currentLaneIndex <span style="color:#f92672">=</span> WaveGetLaneIndex();
+</span></span><span style="display:flex;"><span>uint targetLaneIndex;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>uint activeMask <span style="color:#f92672">=</span> WaveActiveBallot(true).x;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">while</span> (activeMask <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    targetLaneIndex <span style="color:#f92672">=</span> firstbitlow(activeMask);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (targetLaneIndex <span style="color:#f92672">&gt;=</span> currentLaneIndex)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">break</span>; <span style="color:#75715e">// Reach edge. 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// WaveReadLaneAt in loop never work.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">const</span> uint targetPackId <span style="color:#f92672">=</span> sharedPackId[sharedIdOffset <span style="color:#f92672">+</span> targetLaneIndex];
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (targetPackId <span style="color:#f92672">==</span> packId)
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">break</span>; <span style="color:#75715e">// Found reuse.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Step next.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    activeMask <span style="color:#f92672">^=</span> (<span style="color:#ae81ff">1U</span> <span style="color:#f92672">&lt;&lt;</span> targetLaneIndex);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>[branch]
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">if</span> (currentLaneIndex <span style="color:#f92672">==</span> targetLaneIndex)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Only Active lane load triangle info.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    getTriangleMiscInfo(...);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>[unroll(<span style="color:#ae81ff">3</span>)] 
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span> (uint i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">3</span>; i <span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    triangleInfo.uv[i] <span style="color:#f92672">=</span> WaveReadLaneAt(triangleInfo.uv[i], targetLaneIndex);
+</span></span><span style="display:flex;"><span>    triangleInfo.p[i]  <span style="color:#f92672">=</span> WaveReadLaneAt(triangleInfo.p[i],  targetLaneIndex);
+</span></span><span style="display:flex;"><span>    triangleInfo.t[i]  <span style="color:#f92672">=</span> WaveReadLaneAt(triangleInfo.t[i],  targetLaneIndex);
+</span></span><span style="display:flex;"><span>    triangleInfo.bi[i] <span style="color:#f92672">=</span> WaveReadLaneAt(triangleInfo.bi[i], targetLaneIndex);
+</span></span><span style="display:flex;"><span>    triangleInfo.n[i]  <span style="color:#f92672">=</span> WaveReadLaneAt(triangleInfo.n[i],  targetLaneIndex);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#else 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>getTriangleMiscInfo(...);
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#endif
+</span></span></span></code></pre></div><p>用红色代表加载并计算三角形的Lane，绿色代表复用的Lane，可视化如下：</p>
+<p><img src="/images/nanite/image-20240829122903133.png" alt="Image"></p>
+<p>大部分像素都是可复用优化的。此时统计性能比较（Bistro ~4k 3070Ti）：</p>
+<p><img src="/images/nanite/image-20240829123229885.png" alt="Image"></p>
+<p>性能反而更慢了。</p>
+<p><img src="/images/nanite/image-20240829123519632.png" alt="Image"></p>
+<p>虽然用branch选择性的加载三角形减少了整体的带宽消耗，但Wave整体执行速度取决于最慢的Lane什么时候完成三角形加载，在增加了Reuse后，最慢的Lane原本的任务并没有减少，还多了一些Additional Work。</p>
+<p>另外一种想法是：</p>
+<p>一条线程处理屏幕上连续的2x2像素的任务，缓存三角形信息，仅在需要加载的时候才加载三角形：</p>
+<p><img src="/images/nanite/image-20240829124902434.png" alt="Image"></p>
+<p>这样做有个好处是每条Lane都大概率能复用2-3次三角形，综合到Wave最好情况能在2x2像素内仅加载一次三角形。</p>
+<p>除此之外，还可以在lane需要加载三角形时从WaveFirstActiveLane抽奖：</p>
+<p><img src="/images/nanite/image-20240829132803078.png" alt="Image"></p>
+<p>可视化每条线程的三角形加载数目如下：大部分线程在2x2范围内仅加载一次三角形。</p>
+<p><img src="/images/nanite/image-20240829130725301.png" alt="Image"></p>
+<p>性能（Bistro ~4k 3070Ti）：</p>
+<p><img src="/images/nanite/image-20240829133103117.png" alt="Image"></p>
+<h2 id="最终效果">最终效果</h2>
+<p>无缝LOD过渡：</p>
+<p><img src="/images/nanite/lightingLOD3.gif" alt="Image"></p>
+<p>Meshlet LOD过渡可视化：</p>
+<p><img src="/images/nanite/lightingLOD2.gif" alt="Image"></p>
+<p>三角形过渡可视化：</p>
+<p><img src="/images/nanite/lightingLOD4.gif" alt="Image"></p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>Related Posts</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/">UE5.32里的Shader attempted to bind uniform buffer...崩溃</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/">UE5.32抖动半透明兼容TAA时序超分算法的改进方法</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E6%9B%9D%E5%85%89%E8%9E%8D%E5%90%88%E5%9C%A8%E6%B8%B8%E6%88%8F%E4%B8%AD%E5%BC%95%E5%85%A5%E6%9B%B4%E5%A4%9A%E7%9A%84%E8%89%B2%E5%BD%A9/">为游戏引入更多的色彩：实时曝光融合</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93/">实时体积云渲染的光照细节</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/">UE4.27/5.0 Async Compute异步计算优化简易教程</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2024 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>
