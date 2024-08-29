@@ -71,13 +71,18 @@
 
   <div class="post-text">
     <p>虚幻引擎5里最吸引人的新特性莫过于Nanite。它可以自动的生成和无缝切换网格LOD，处理海量三角形并且让游戏保持一个较高的帧率。</p>
-<p>最近一个月，我在引擎中实现了Nanite中的绝大部分特性，包括无缝的DAG Cluster LOD切换，两次HZB剔除，基于MeshShader的Visibility流程等。一些用处较小的特性（软光栅化）、一些和引擎其他功能耦合比较重的特性（IO和压缩）则跳过。而Nanite中的Material Passes，则被替换成更加现代化的、基于Bindless的实现。本文介绍了实现过程中遇到的一些主要技术细节。</p>
+<p>最近一个月，我在引擎中实现了Nanite中的大部分特性，包括无缝的DAG Cluster LOD切换，两次HZB剔除，基于MeshShader的Visibility流程等。一些用处较小的特性（软光栅化）、一些和引擎其他功能耦合比较重的特性（IO和压缩）则跳过。而Nanite中的Material Passes，则被替换成更加现代化的、基于Bindless的实现。本文介绍了实现过程中遇到的一些主要技术细节。</p>
+<p>最终视频：https://www.bilibili.com/video/BV19THMedEuN</p>
 <h2 id="网格预处理">网格预处理</h2>
 <p>与新出的Mesh Shader管线的渲染流程相同，Nanite将临近的128个三角形组织成Cluster（或者称为Meshlet)，每个网格都切割为多个Cluster。</p>
 <p>LOD在Cluster Group级别上构建，Nanite描述了一种名为DAG Cluster Group LOD的层次结构，具体细节请查看：</p>
 <p><a href="https://www.youtube.com/watch?v=eviSykqSUUw">https://www.youtube.com/watch?v=eviSykqSUUw</a></p>
-<p>本文的DAG Cluster Group LOD处理流程：Cluster(Meshlet)划分、网格简化使用MeshOptimizer库，Cluster Group划分使用Metis库。</p>
-<p>值得注意的是：网格简化时，<strong>输入的三角形列表要求拓扑连续</strong>，否则网格无法继续简化下去。</p>
+<p>SylvesterHesp和jglrxavpok分别有一篇很棒的文章讲述了DAG Cluster Group LOD的构建流程。</p>
+<p><a href="https://blog.traverseresearch.nl/creating-a-directed-acyclic-graph-from-a-mesh-1329e57286e5">https://blog.traverseresearch.nl/creating-a-directed-acyclic-graph-from-a-mesh-1329e57286e5</a></p>
+<p><a href="https://jglrxavpok.github.io/2024/01/19/recreating-nanite-lod-generation.html">https://jglrxavpok.github.io/2024/01/19/recreating-nanite-lod-generation.html</a></p>
+<p>本文的DAG Cluster Group LOD处理流程在jglrxavpok提到的流程基础上修改而来：</p>
+<p>Cluster(Meshlet)划分、网格简化使用MeshOptimizer库，Cluster Group划分使用Metis库。</p>
+<p>需要注意的是：网格简化时，<strong>输入的三角形列表要求拓扑连续</strong>，否则网格无法继续简化下去。</p>
 <p>网格的三角形一般拓扑连续，但某些特殊的原因下（UV镜像，美术要卡硬边法线等），要分裂出额外的顶点，分裂出来的顶点会卡住MeshOptimizer的网格简化，导致分裂边附近的三角形将无法继续简化下去。</p>
 <p><img src="/images/nanite/image-20240828165624285.png" alt="Image"></p>
 <p>这种情况属于正常现象。</p>
