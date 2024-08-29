@@ -71,7 +71,7 @@
 
   <div class="post-text">
     <p>虚幻引擎5里最吸引人的新特性莫过于Nanite。它可以自动的生成和无缝切换网格LOD，处理海量三角形并且让游戏保持一个较高的帧率。</p>
-<p>本文介绍了实现Nanite过程中的一些技术细节。一些用处较小的特性（软光栅化）、一些和引擎其他功能耦合比较重的特性（IO和压缩）则跳过。而Nanite中的Material Passes，则被替换成更加现代化的、基于Bindless的实现。</p>
+<p>最近一个月，我在引擎中实现了Nanite中的绝大部分特性，包括无缝的DAG Cluster LOD切换，两次HZB剔除，基于MeshShader的Visibility流程等。一些用处较小的特性（软光栅化）、一些和引擎其他功能耦合比较重的特性（IO和压缩）则跳过。而Nanite中的Material Passes，则被替换成更加现代化的、基于Bindless的实现。本文介绍了实现过程中遇到的一些主要技术细节。</p>
 <h2 id="网格预处理">网格预处理</h2>
 <p>与新出的Mesh Shader管线的渲染流程相同，Nanite将临近的128个三角形组织成Cluster（或者称为Meshlet)，每个网格都切割为多个Cluster。</p>
 <p>LOD在Cluster Group级别上构建，Nanite描述了一种名为DAG Cluster Group LOD的层次结构，具体细节请查看：</p>
