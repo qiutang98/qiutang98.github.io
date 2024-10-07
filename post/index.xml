@@ -7,9 +7,18 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh-cn</language>
     <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
-    <lastBuildDate>Thu, 29 Aug 2024 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 07 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
     <item>
-      <title>My Nanite: 从零开始实现Nanite风格的网格渲染器</title>
+      <title>更快更好的PCSS</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/</link>
+      <pubDate>Mon, 07 Oct 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/</guid>
+      <description>PCSS令人诟病的一点是：需要大量的PCF采样，才能得到一个较好的软影效果。 SATVSM/VSSM使用Sum-Area-Table表代替PC</description>
+    </item>
+    
+    <item>
+      <title>MyNanite: 从零开始实现Nanite风格网格渲染器</title>
       <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/</link>
       <pubDate>Thu, 29 Aug 2024 00:00:00 +0000</pubDate>
       
@@ -18,16 +27,16 @@
     </item>
     
     <item>
-      <title>UE5.32里的Shader attempted to bind uniform buffer...崩溃</title>
+      <title>UE5.32里的ShaderUniformBufferBinding崩溃</title>
       <link>/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/</link>
       <pubDate>Wed, 01 May 2024 00:00:00 +0000</pubDate>
       
       <guid>/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/</guid>
-      <description>修改逐Pass的UniformBuffer时，极易触发 Shader attempted to bind uniform buffer &amp;lsquo;%s&amp;rsquo; at slot %s with hash &amp;lsquo;%u&amp;rsquo;, but the shader expected &amp;lsquo;%s&amp;rsquo; with hash &amp;lsquo;%u&amp;rsquo;.检查崩溃，当</description>
+      <description>修改逐Pass的UniformBuffer时，极易触发 &amp;ldquo;Shader attempted to bind uniform buffer &amp;lsquo;%s&amp;rsquo; at slot %s with hash &amp;lsquo;%u&amp;rsquo;, but the shader expected &amp;lsquo;%s&amp;rsquo; with hash &amp;lsquo;%u&amp;rsquo;. &amp;ldquo;检查崩溃，当遇到这种崩溃时，应</description>
     </item>
     
     <item>
-      <title>UE5.32抖动半透明兼容TAA时序超分算法的改进方法</title>
+      <title>UE5.32抖动半透明兼容TAA时序超分算法改进</title>
       <link>/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/</link>
       <pubDate>Sun, 18 Feb 2024 00:00:00 +0000</pubDate>
       
@@ -63,7 +72,7 @@
     </item>
     
     <item>
-      <title>UE4.27/5.0 Async Compute异步计算优化简易教程</title>
+      <title>UE5.0 AsyncCompute异步计算优化简易教程</title>
       <link>/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/</link>
       <pubDate>Mon, 18 Jul 2022 00:00:00 +0000</pubDate>
       
@@ -72,7 +81,7 @@
     </item>
     
     <item>
-      <title>UE4.27实现彩虹六号中的ShadowCache HZB Culling</title>
+      <title>UE4.27实现彩虹六号中的Shadow Cache HZB Culling</title>
       <link>/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/</link>
       <pubDate>Wed, 01 Jun 2022 00:00:00 +0000</pubDate>
       
@@ -207,7 +216,7 @@
     </item>
     
     <item>
-      <title>Vulkan利用SpirV-Cross提取Shader反射信息来自动构建MeshDrawCommand</title>
+      <title>使用用SpirV-Cross提取反射信息自动构建DrawCommand</title>
       <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/</link>
       <pubDate>Wed, 14 Apr 2021 00:00:00 +0000</pubDate>
       

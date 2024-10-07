@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="Hugo 0.96.0" />
-  <title> UE5.32里的Shader attempted to bind uniform buffer...崩溃 | 月光下的旅行。 </title>
+  <title> UE5.32里的ShaderUniformBufferBinding崩溃 | 月光下的旅行。 </title>
   <meta name="description" content="UE5.32里的Shader attempted to bind uniform buffer...崩溃">
   <link rel="stylesheet" href="/css/simpleness.css">
   <link rel="canonical" href="/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/">
@@ -23,13 +23,11 @@
     </div>
     <div class="nav-item nav-menu">
       
-      <a href="/categories/unreal"> Unreal</a>
-      
-      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
-      
-      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
-      
       <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/categories/%E5%8A%A8%E7%94%BB"> Animation</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93"> Rendering</a>
       
       <a href="/projects/"> Projects</a>
       
@@ -48,10 +46,10 @@
   
 <article class="post">
   <header class="post-header">
-    <h1 style="text-align: center;" >UE5.32里的Shader attempted to bind uniform buffer...崩溃</h1>
+    <h1 style="text-align: center;" >UE5.32里的ShaderUniformBufferBinding崩溃</h1>
     <div class="post-metadata">
     
-      <time datetime="2024-05-01T00:00:00Z">May 01, 2024</time> &nbsp; 
+      <time datetime="2024-05-01T00:00:00Z">2024年5月1日</time> &nbsp; 
     
     
     
@@ -60,7 +58,7 @@
     
       <i class="fas fa-folder"></i>
       
-      <a href="/categories/unreal">Unreal</a>
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
       &nbsp;
       
     
@@ -70,7 +68,7 @@
   
 
   <div class="post-text">
-    <p>修改逐Pass的UniformBuffer时，极易触发 Shader attempted to bind uniform buffer &lsquo;%s&rsquo; at slot %s with hash &lsquo;%u&rsquo;, but the shader expected &lsquo;%s&rsquo; with hash &lsquo;%u&rsquo;.检查崩溃，当遇到这种崩溃时，应该首先检查最近的MeshPass的UniformBinding是不是有问题（而不是怀疑SharedDDC的缓存有问题，XD，说的就是我自己）。</p>
+    <p>修改逐Pass的UniformBuffer时，极易触发 &ldquo;Shader attempted to bind uniform buffer &lsquo;%s&rsquo; at slot %s with hash &lsquo;%u&rsquo;, but the shader expected &lsquo;%s&rsquo; with hash &lsquo;%u&rsquo;. &ldquo;检查崩溃，当遇到这种崩溃时，应该首先检查最近的MeshPass的UniformBinding是不是有问题（而不是怀疑SharedDDC的缓存有问题，XD，说的就是我自己）。</p>
 <p>以UE5里的DistortionPass为例，回顾一下修改逐Pass的UniformBuffer步骤，<strong>最重要和容易忽略的地方是第4步</strong>：</p>
 <ol>
 <li>挑选一个Slot, 声明一个自定义的Global Shader Parameter（此处用了SceneTextures），在原Slot类型的基础上额外加上自己的参数：</li>
@@ -111,8 +109,10 @@
 </ol>
 <p><img src="/images/UE5.32%E9%87%8C%E6%AD%A3%E7%A1%AE%E5%A2%9E%E5%8A%A0%E9%80%90Pass%E7%9A%84UniformBuffer%E7%9A%84%E5%81%9A%E6%B3%95_assets/image-20240502133310997.png" alt="Image"></p>
 <p>​	<strong>如果忘记了重声明，有些材质蓝图里面如果采样了SceneTexture或者其他原本Slot的内容，UE的Shader编译器会再给Shader额外加一个SceneTextures（或其他）的Slot，此时，包括前面我们自己声明的SceneTextures，此处重复了定义了相同Slot的UniformBuffer，在Shader验证阶段的ValidateStaticUniformBuffer函数中，会直接挂掉，报出类似如下的信息：</strong></p>
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span>Shader attempted to bind uniform buffer <span style="color:#960050;background-color:#1e0010">&#39;</span>FVelocityPassUniformParameters<span style="color:#960050;background-color:#1e0010">&#39;</span> at slot [Name: SceneTextures, Slot: <span style="color:#ae81ff">8</span>] with hash <span style="color:#960050;background-color:#1e0010">&#39;</span><span style="color:#ae81ff">96469509</span><span style="color:#960050;background-color:#1e0010">&#39;</span>, but the shader expected <span style="color:#960050;background-color:#1e0010">&#39;</span>LumenFrontLayerTranslucencyGBufferPass<span style="color:#960050;background-color:#1e0010">&#39;</span> with hash <span style="color:#960050;background-color:#1e0010">&#39;</span><span style="color:#ae81ff">13633221</span><span style="color:#960050;background-color:#1e0010">&#39;</span>..
-</span></span></code></pre></div><p>为啥会是LumenFrontLayerTranslucencyGBufferPass，因为它也是SceneTextures的Slot，UE会直接拿上一个相同Slot的补上，所以有时候，这个崩溃也是随机的。</p>
+<pre tabindex="0"><code>Shader attempted to bind uniform buffer &#39;FVelocityPassUniformParameters&#39; at slot 
+[Name: SceneTextures, Slot: 8] with hash &#39;96469509&#39;, 
+but the shader expected &#39;LumenFrontLayerTranslucencyGBufferPass&#39; with hash &#39;13633221&#39;..
+</code></pre><p>为啥会是LumenFrontLayerTranslucencyGBufferPass，因为它也是SceneTextures的Slot，UE会直接拿上一个相同Slot的补上，所以有时候，这个崩溃也是随机的。</p>
 <p>令人感到蛋疼的是这个崩溃仅运行时需要使用到这个材质时才能触发，打包是可以正常完成的，所以该崩溃很容易让人觉得是SharedDDC的问题，最后都查歪方向了。</p>
 
   </div>
@@ -127,35 +127,32 @@
         <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
         &nbsp;
       
-        <a href="/tags/unreal">Unreal</a>
-        &nbsp;
-      
     </div>
     
 
     
     
     <div class="related-posts">
-      <h4>Related Posts</h4>
+      <h4>相关文章</h4>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/">UE5.32抖动半透明兼容TAA时序超分算法的改进方法</a>
+      <a href="/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/">UE5.32抖动半透明兼容TAA时序超分算法改进</a>
       <br>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/">UE4.27/5.0 Async Compute异步计算优化简易教程</a>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/">C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题</a>
       <br>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">UE4.27实现彩虹六号中的ShadowCache HZB Culling</a>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E6%9B%9D%E5%85%89%E8%9E%8D%E5%90%88%E5%9C%A8%E6%B8%B8%E6%88%8F%E4%B8%AD%E5%BC%95%E5%85%A5%E6%9B%B4%E5%A4%9A%E7%9A%84%E8%89%B2%E5%BD%A9/">为游戏引入更多的色彩：实时曝光融合</a>
       <br>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/unreal/ue4.26-ilc%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E4%B8%8E%E6%B8%B2%E6%9F%93/">UE4.26 ILC加载与渲染</a>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93/">实时体积云渲染的光照细节</a>
       <br>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/">UE4.26 Lightmap从烘焙到渲染</a>
+      <a href="/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/">UE5.0 AsyncCompute异步计算优化简易教程</a>
       <br>
       
     </div>

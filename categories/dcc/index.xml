@@ -18,6 +18,15 @@
     </item>
     
     <item>
+      <title>移动端树叶SSS效果制作</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6sss%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C/</link>
+      <pubDate>Sun, 13 Dec 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6sss%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C/</guid>
+      <description>UE4内置了双面植被渲染的ShadingModel，内部使用了TwoSidedBxDF的专门BxDF方程： FDirectLighting TwoSidedBxDF( FGBufferData GBuffer, half3 N, half3 V, half3 L, float Falloff, float NoL, FAreaLight AreaLight, FShadowTerms</description>
+    </item>
+    
+    <item>
       <title>Substance Painter Shader与UE4移动端渲染效果同步</title>
       <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/substance-painter%E4%B8%8Eue4%E9%85%8D%E5%A5%97shader/</link>
       <pubDate>Sat, 26 Sep 2020 00:00:00 +0000</pubDate>

@@ -7,9 +7,18 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh-cn</language>
     <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
-    <lastBuildDate>Thu, 29 Aug 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 07 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93/index.xml" rel="self" type="application/rss+xml" />
     <item>
-      <title>My Nanite: 从零开始实现Nanite风格的网格渲染器</title>
+      <title>更快更好的PCSS</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/</link>
+      <pubDate>Mon, 07 Oct 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/</guid>
+      <description>PCSS令人诟病的一点是：需要大量的PCF采样，才能得到一个较好的软影效果。 SATVSM/VSSM使用Sum-Area-Table表代替PC</description>
+    </item>
+    
+    <item>
+      <title>MyNanite: 从零开始实现Nanite风格网格渲染器</title>
       <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/</link>
       <pubDate>Thu, 29 Aug 2024 00:00:00 +0000</pubDate>
       
@@ -18,21 +27,30 @@
     </item>
     
     <item>
-      <title>UE5.32里的Shader attempted to bind uniform buffer...崩溃</title>
+      <title>UE5.32里的ShaderUniformBufferBinding崩溃</title>
       <link>/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/</link>
       <pubDate>Wed, 01 May 2024 00:00:00 +0000</pubDate>
       
       <guid>/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/</guid>
-      <description>修改逐Pass的UniformBuffer时，极易触发 Shader attempted to bind uniform buffer &amp;lsquo;%s&amp;rsquo; at slot %s with hash &amp;lsquo;%u&amp;rsquo;, but the shader expected &amp;lsquo;%s&amp;rsquo; with hash &amp;lsquo;%u&amp;rsquo;.检查崩溃，当</description>
+      <description>修改逐Pass的UniformBuffer时，极易触发 &amp;ldquo;Shader attempted to bind uniform buffer &amp;lsquo;%s&amp;rsquo; at slot %s with hash &amp;lsquo;%u&amp;rsquo;, but the shader expected &amp;lsquo;%s&amp;rsquo; with hash &amp;lsquo;%u&amp;rsquo;. &amp;ldquo;检查崩溃，当遇到这种崩溃时，应</description>
     </item>
     
     <item>
-      <title>UE5.32抖动半透明兼容TAA时序超分算法的改进方法</title>
+      <title>UE5.32抖动半透明兼容TAA时序超分算法改进</title>
       <link>/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/</link>
       <pubDate>Sun, 18 Feb 2024 00:00:00 +0000</pubDate>
       
       <guid>/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/</guid>
       <description>常规的抖动半透明使用噪声（Pattern）抖动Alpha Mask，通过镂空的方式，搭配TAA模拟半透明。 经常会出现一些Artifact： 空洞</description>
+    </item>
+    
+    <item>
+      <title>C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Wed, 12 Jul 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/</guid>
+      <description>先前遇到一个Memory Hash计算错误的问题，该结构体如下： struct BufferIdentifier { uint64_t bufferSize; uint32_t bufferUsage; uint32_t type; uint32_t vmaUsage; }; 我们都知道C++的结构体会选择最大的成员来做内存对齐，</description>
     </item>
     
     <item>
@@ -54,7 +72,7 @@
     </item>
     
     <item>
-      <title>UE4.27/5.0 Async Compute异步计算优化简易教程</title>
+      <title>UE5.0 AsyncCompute异步计算优化简易教程</title>
       <link>/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/</link>
       <pubDate>Mon, 18 Jul 2022 00:00:00 +0000</pubDate>
       
@@ -63,7 +81,7 @@
     </item>
     
     <item>
-      <title>UE4.27实现彩虹六号中的ShadowCache HZB Culling</title>
+      <title>UE4.27实现彩虹六号中的Shadow Cache HZB Culling</title>
       <link>/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/</link>
       <pubDate>Wed, 01 Jun 2022 00:00:00 +0000</pubDate>
       
@@ -87,6 +105,24 @@
       
       <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/sssr/</guid>
       <description>Stochastic Screen Space Reflections 旨在屏幕空间反射时，加入重要性采样的思想，根据反射表面的粗糙度计算表面法线的概率分布，得到一个锥形分布的反射光线。 主流做法有两种，一</description>
+    </item>
+    
+    <item>
+      <title>简单实现UE5中的VirtualShadowMap与性能对比</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue5%E7%9A%84virtualshadowmap%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86%E4%B8%8E%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94/</link>
+      <pubDate>Tue, 29 Mar 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue5%E7%9A%84virtualshadowmap%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86%E4%B8%8E%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94/</guid>
+      <description>​ 在2021年UE5的Siggraph大会上，Epic的PPT简略提到了VirtualShadowMap的实现原理，但还是看得一脸懵逼。 ​ 新</description>
+    </item>
+    
+    <item>
+      <title>Vulkan TAA实现与细节</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/</link>
+      <pubDate>Sun, 28 Nov 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/</guid>
+      <description>一周时间过去后，TAA终于集成到了引擎中。 TAA On: TAA 的抗锯齿效果基本是最好的。 有关TAA的原理已经有很多的GDC分享PPT了，这里主要分享一下 Vulkan</description>
     </item>
     
     <item>
@@ -117,12 +153,39 @@
     </item>
     
     <item>
+      <title>Vulkan实现Sample Distribution Shadow Maps</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/</link>
+      <pubDate>Tue, 21 Sep 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/</guid>
+      <description>Sample Distribution Shadow Maps(SDSM) 和Cascade Shadow Map原理基本一模一样。但SDSM凭借其动态划分Casacde深度优势效果远胜于 CascadeShadowMap。</description>
+    </item>
+    
+    <item>
+      <title>Vulkan CascadeShadowMap中的常见问题与解决方案</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/</link>
+      <pubDate>Sun, 11 Jul 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/</guid>
+      <description>在先前的Vulkan CascadeShadowMap功能开发过程中，做了一个快速的CascadeShadowmap版本，其中还存在不少问题，</description>
+    </item>
+    
+    <item>
       <title>VkWriteDescriptorSet内存堆释放问题</title>
       <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/</link>
       <pubDate>Sat, 10 Jul 2021 00:00:00 +0000</pubDate>
       
       <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/</guid>
       <description>Vulkan更新描述符集信息时需要填写VkWriteDescriptorSet结构体，然后调用vkUpdateDescriptorSets将</description>
+    </item>
+    
+    <item>
+      <title>大型场景下的Vulkan CascadeShadowMap功能开发</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/</link>
+      <pubDate>Thu, 01 Jul 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/</guid>
+      <description>亚马逊开源的Bistro场景大小超过了300m x 300m。先前单纯ShadowMap算法已经无法满足如此大的场景阴影表现需求，就算单张Sha</description>
     </item>
     
     <item>
@@ -153,6 +216,24 @@
     </item>
     
     <item>
+      <title>使用用SpirV-Cross提取反射信息自动构建DrawCommand</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/</link>
+      <pubDate>Wed, 14 Apr 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/</guid>
+      <description>Vulkan准备一次MeshDrawCommand非常麻烦，要写很多代码，这时候一种可自适应性的、自动填充pipeline和vao的Mesh</description>
+    </item>
+    
+    <item>
+      <title>UE4移动端中的两种Resolve</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/</link>
+      <pubDate>Sun, 21 Mar 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/</guid>
+      <description>一种是 MSAA Resolve，原因是MultiSample（过采样）的RenderBuffer需要经过一些加权处理（重采样）才能转换为不带MSAA</description>
+    </item>
+    
+    <item>
       <title>两种好用的全屏Quad绘制方法</title>
       <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%A4%E7%A7%8D%E8%8A%B1%E5%93%A8%E4%BD%86%E5%AE%9E%E7%94%A8%E7%9A%84%E5%85%A8%E5%B1%8Fquad%E7%BB%98%E5%88%B6%E6%96%B9%E6%B3%95/</link>
       <pubDate>Sun, 21 Mar 2021 00:00:00 +0000</pubDate>
@@ -162,21 +243,21 @@
     </item>
     
     <item>
-      <title>移动端树叶SSS效果制作</title>
-      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6sss%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C/</link>
-      <pubDate>Sun, 13 Dec 2020 00:00:00 +0000</pubDate>
-      
-      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%A0%91%E5%8F%B6sss%E6%95%88%E6%9E%9C%E5%88%B6%E4%BD%9C/</guid>
-      <description>UE4内置了双面植被渲染的ShadingModel，内部使用了TwoSidedBxDF的专门BxDF方程： FDirectLighting TwoSidedBxDF( FGBufferData GBuffer, half3 N, half3 V, half3 L, float Falloff, float NoL, FAreaLight AreaLight, FShadowTerms</description>
-    </item>
-    
-    <item>
       <title>地形纹理拼接混合实现更多的地形细节</title>
       <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%9C%B0%E5%9B%BE%E7%BA%B9%E7%90%86%E6%8B%BC%E6%8E%A5%E6%B7%B7%E5%90%88%E5%AE%9E%E7%8E%B0%E6%9B%B4%E5%A4%9A%E7%9A%84%E5%9C%B0%E5%BD%A2%E7%BB%86%E8%8A%82/</link>
       <pubDate>Sun, 06 Dec 2020 00:00:00 +0000</pubDate>
       
       <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%9C%B0%E5%9B%BE%E7%BA%B9%E7%90%86%E6%8B%BC%E6%8E%A5%E6%B7%B7%E5%90%88%E5%AE%9E%E7%8E%B0%E6%9B%B4%E5%A4%9A%E7%9A%84%E5%9C%B0%E5%BD%A2%E7%BB%86%E8%8A%82/</guid>
       <description>把多个地形纹理合并成图集，渲染时采样对应索引混合，可以做到减少带宽消耗的同时实现丰富的地形纹理混合细节。 其实这是GPU Pro2上详细分享的老</description>
+    </item>
+    
+    <item>
+      <title>TextureCache Miss问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/texturecache-miss%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Thu, 03 Dec 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/texturecache-miss%E9%97%AE%E9%A2%98/</guid>
+      <description>之前做地形纹理拼接时遇到大量的Texture Cache Miss问题，导致着色程序的性能下降，正好周末有空可以看这个论文：http://fileadm</description>
     </item>
     
     <item>
@@ -234,21 +315,12 @@
     </item>
     
     <item>
-      <title>Substance Painter Shader与UE4移动端渲染效果同步</title>
-      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/substance-painter%E4%B8%8Eue4%E9%85%8D%E5%A5%97shader/</link>
-      <pubDate>Sat, 26 Sep 2020 00:00:00 +0000</pubDate>
+      <title>UE4.26 移动端手机Tiled Resolve性能记录</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/</link>
+      <pubDate>Fri, 14 Aug 2020 00:00:00 +0000</pubDate>
       
-      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/substance-painter%E4%B8%8Eue4%E9%85%8D%E5%A5%97shader/</guid>
-      <description>要为UE4项目编写SP的Shader，首先得把MobileBasePassXXX.usf翻出来。然后将通用的直射光 漫反射+ 高光 + Skylight + IBL全</description>
-    </item>
-    
-    <item>
-      <title>各向异性材质渲染与美术流程注意事项</title>
-      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%9D%E7%BB%B8%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9/</link>
-      <pubDate>Wed, 08 Jul 2020 00:00:00 +0000</pubDate>
-      
-      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%9D%E7%BB%B8%E5%A4%B4%E5%8F%91%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E6%9D%90%E8%B4%A8%E6%B8%B2%E6%9F%93%E4%B8%8E%E7%BE%8E%E6%9C%AF%E5%88%B6%E4%BD%9C%E6%B5%81%E7%A8%8B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9/</guid>
-      <description>原理 丝绸、头发这些各项异性材质，它们的高光部分计算使用的是各向异性方式。当然实时渲染里不可能像离线渲染里那样去积分计算，游戏中大部分都是用切</description>
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/</guid>
+      <description>Forward管线，ShadowDepth Map Resolve，骁龙865: 2048 * 2480, Reslove Time 5.1ms. 1024 * 1024, Resolve Time 1.21ms. 768 * 768, Resolve Time 0.61ms.</description>
     </item>
     
     <item>
@@ -258,15 +330,6 @@
       
       <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0/</guid>
       <description>翻页效果主要分为顶点着色器动画和UI遮罩动画。我简单的在Unity上分别实现这两个，然后移植到UE4上面去。 顶点着色器动画 顶点着色器实现实际</description>
-    </item>
-    
-    <item>
-      <title>3dsMax视口shader与unity同步</title>
-      <link>/post/dcc/3dsmax%E8%A7%86%E5%8F%A3shader%E4%B8%8Eunity%E5%90%8C%E6%AD%A5/</link>
-      <pubDate>Tue, 09 Jun 2020 00:00:00 +0000</pubDate>
-      
-      <guid>/post/dcc/3dsmax%E8%A7%86%E5%8F%A3shader%E4%B8%8Eunity%E5%90%8C%E6%AD%A5/</guid>
-      <description>首先给出链接：https://github.com/HongHuaFu/Unity-3dsMax-ShaderSamples Max,Maya</description>
     </item>
     
   </channel>

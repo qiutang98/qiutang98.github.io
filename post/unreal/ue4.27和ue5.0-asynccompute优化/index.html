@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="Hugo 0.96.0" />
-  <title> UE4.27/5.0 Async Compute异步计算优化简易教程 | 月光下的旅行。 </title>
+  <title> UE5.0 AsyncCompute异步计算优化简易教程 | 月光下的旅行。 </title>
   <meta name="description" content="UE4.27/5.0 Async Compute异步计算优化简易教程">
   <link rel="stylesheet" href="/css/simpleness.css">
   <link rel="canonical" href="/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/">
@@ -23,13 +23,11 @@
     </div>
     <div class="nav-item nav-menu">
       
-      <a href="/categories/unreal"> Unreal</a>
-      
-      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
-      
-      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
-      
       <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/categories/%E5%8A%A8%E7%94%BB"> Animation</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93"> Rendering</a>
       
       <a href="/projects/"> Projects</a>
       
@@ -48,10 +46,10 @@
   
 <article class="post">
   <header class="post-header">
-    <h1 style="text-align: center;" >UE4.27/5.0 Async Compute异步计算优化简易教程</h1>
+    <h1 style="text-align: center;" >UE5.0 AsyncCompute异步计算优化简易教程</h1>
     <div class="post-metadata">
     
-      <time datetime="2022-07-18T00:00:00Z">July 18, 2022</time> &nbsp; 
+      <time datetime="2022-07-18T00:00:00Z">2022年7月18日</time> &nbsp; 
     
     
     
@@ -60,7 +58,7 @@
     
       <i class="fas fa-folder"></i>
       
-      <a href="/categories/unreal">Unreal</a>
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
       &nbsp;
       
     
@@ -161,22 +159,24 @@
         <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
         &nbsp;
       
-        <a href="/tags/unreal">Unreal</a>
-        &nbsp;
-      
-        <a href="/tags/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api">图形硬件Api</a>
-        &nbsp;
-      
     </div>
     
 
     
     
     <div class="related-posts">
-      <h4>Related Posts</h4>
+      <h4>相关文章</h4>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">UE4.27实现彩虹六号中的ShadowCache HZB Culling</a>
+      <a href="/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">UE4.27实现彩虹六号中的Shadow Cache HZB Culling</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E9%AB%98%E8%B4%A8%E9%87%8F%E7%9A%84taa/">高质量静态稳定的TAA改进</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/sssr/">快速收敛的Stochastic Screen Space Reflections</a>
       <br>
       
       <i class="fas fa-paperclip"></i>
@@ -184,15 +184,7 @@
       <br>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/">关于Vulkan渲染画面数据杂乱但Renderdoc下正常问题</a>
-      <br>
-      
-      <i class="fas fa-paperclip"></i>
-      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/">Vulkan异步队列与异步纹理上传</a>
-      <br>
-      
-      <i class="fas fa-paperclip"></i>
-      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/">VkWriteDescriptorSet内存堆释放问题</a>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/">Vulkan TAA实现与细节</a>
       <br>
       
     </div>

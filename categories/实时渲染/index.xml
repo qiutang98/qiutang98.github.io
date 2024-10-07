@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>实时渲染 on 月光下的旅行。</title>
+    <link>/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93/</link>
+    <description>Recent content in 实时渲染 on 月光下的旅行。</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh-cn</language>
+    <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
+    <lastBuildDate>Mon, 07 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>更快更好的PCSS</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/</link>
+      <pubDate>Mon, 07 Oct 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/</guid>
+      <description>PCSS令人诟病的一点是：需要大量的PCF采样，才能得到一个较好的软影效果。 SATVSM/VSSM使用Sum-Area-Table表代替PC</description>
+    </item>
+    
+    <item>
+      <title>MyNanite: 从零开始实现Nanite风格网格渲染器</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/</link>
+      <pubDate>Thu, 29 Aug 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/</guid>
+      <description>虚幻引擎5里最吸引人的新特性莫过于Nanite。它可以自动的生成和无缝切换网格LOD，处理海量三角形并且让游戏保持一个较高的帧率。 最近一个月</description>
+    </item>
+    
+    <item>
+      <title>UE5.32里的ShaderUniformBufferBinding崩溃</title>
+      <link>/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/</link>
+      <pubDate>Wed, 01 May 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/</guid>
+      <description>修改逐Pass的UniformBuffer时，极易触发 &amp;ldquo;Shader attempted to bind uniform buffer &amp;lsquo;%s&amp;rsquo; at slot %s with hash &amp;lsquo;%u&amp;rsquo;, but the shader expected &amp;lsquo;%s&amp;rsquo; with hash &amp;lsquo;%u&amp;rsquo;. &amp;ldquo;检查崩溃，当遇到这种崩溃时，应</description>
+    </item>
+    
+    <item>
+      <title>UE5.32抖动半透明兼容TAA时序超分算法改进</title>
+      <link>/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/</link>
+      <pubDate>Sun, 18 Feb 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/</guid>
+      <description>常规的抖动半透明使用噪声（Pattern）抖动Alpha Mask，通过镂空的方式，搭配TAA模拟半透明。 经常会出现一些Artifact： 空洞</description>
+    </item>
+    
+    <item>
+      <title>C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Wed, 12 Jul 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/</guid>
+      <description>先前遇到一个Memory Hash计算错误的问题，该结构体如下： struct BufferIdentifier { uint64_t bufferSize; uint32_t bufferUsage; uint32_t type; uint32_t vmaUsage; }; 我们都知道C++的结构体会选择最大的成员来做内存对齐，</description>
+    </item>
+    
+    <item>
+      <title>为游戏引入更多的色彩：实时曝光融合</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E6%9B%9D%E5%85%89%E8%9E%8D%E5%90%88%E5%9C%A8%E6%B8%B8%E6%88%8F%E4%B8%AD%E5%BC%95%E5%85%A5%E6%9B%B4%E5%A4%9A%E7%9A%84%E8%89%B2%E5%BD%A9/</link>
+      <pubDate>Sun, 11 Jun 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E6%9B%9D%E5%85%89%E8%9E%8D%E5%90%88%E5%9C%A8%E6%B8%B8%E6%88%8F%E4%B8%AD%E5%BC%95%E5%85%A5%E6%9B%B4%E5%A4%9A%E7%9A%84%E8%89%B2%E5%BD%A9/</guid>
+      <description>​ 随着游戏进入HDR时代，光照计算的结果能表示的色彩范围越来越宽广。通常情况下，游戏在HDR 16F线性SRGB色彩空间下做光照计算，然后进行</description>
+    </item>
+    
+    <item>
+      <title>实时体积云渲染的光照细节</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93/</link>
+      <pubDate>Sat, 13 May 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93/</guid>
+      <description>去年十月份我打算在引擎里加入体积云，折腾两个月后弄了一个大概的效果，基本看得过去，匆忙录了一个视频： https://www.bilibili.com/video/BV18e4y1L7bv 但把体积云作为天空的默认启动效果，放在</description>
+    </item>
+    
+    <item>
+      <title>UE5.0 AsyncCompute异步计算优化简易教程</title>
+      <link>/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/</link>
+      <pubDate>Mon, 18 Jul 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/</guid>
+      <description>​ 现代图形API（DX12/Vulkan）以队列为单位提交录制好的Command Buffer, 通常GPU上至少有三种独立的队列类型：Graphics(g</description>
+    </item>
+    
+    <item>
+      <title>UE4.27实现彩虹六号中的Shadow Cache HZB Culling</title>
+      <link>/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/</link>
+      <pubDate>Wed, 01 Jun 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/</guid>
+      <description>游戏场景中经常需要打一些动态的光，实时投射动态阴影，这通常会让ShadowDepth Pass的绘制压力变得很大。 一种优化的思路是做Shado</description>
+    </item>
+    
+    <item>
+      <title>高质量静态稳定的TAA改进</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E9%AB%98%E8%B4%A8%E9%87%8F%E7%9A%84taa/</link>
+      <pubDate>Wed, 27 Apr 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E9%AB%98%E8%B4%A8%E9%87%8F%E7%9A%84taa/</guid>
+      <description>在被TAA中的静态Flicking折磨了两个月后，终于决定花一些来时间来修复这些问题。 最后给出源码。 目标 高质量的采样，理想情况下比拟16xS</description>
+    </item>
+    
+    <item>
+      <title>快速收敛的Stochastic Screen Space Reflections</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/sssr/</link>
+      <pubDate>Mon, 18 Apr 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/sssr/</guid>
+      <description>Stochastic Screen Space Reflections 旨在屏幕空间反射时，加入重要性采样的思想，根据反射表面的粗糙度计算表面法线的概率分布，得到一个锥形分布的反射光线。 主流做法有两种，一</description>
+    </item>
+    
+    <item>
+      <title>简单实现UE5中的VirtualShadowMap与性能对比</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue5%E7%9A%84virtualshadowmap%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86%E4%B8%8E%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94/</link>
+      <pubDate>Tue, 29 Mar 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue5%E7%9A%84virtualshadowmap%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86%E4%B8%8E%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94/</guid>
+      <description>​ 在2021年UE5的Siggraph大会上，Epic的PPT简略提到了VirtualShadowMap的实现原理，但还是看得一脸懵逼。 ​ 新</description>
+    </item>
+    
+    <item>
+      <title>Vulkan TAA实现与细节</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/</link>
+      <pubDate>Sun, 28 Nov 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-taa%E5%AE%9E%E7%8E%B0%E4%B8%8E%E7%BB%86%E8%8A%82/</guid>
+      <description>一周时间过去后，TAA终于集成到了引擎中。 TAA On: TAA 的抗锯齿效果基本是最好的。 有关TAA的原理已经有很多的GDC分享PPT了，这里主要分享一下 Vulkan</description>
+    </item>
+    
+    <item>
+      <title>关于Vulkan渲染画面数据杂乱但Renderdoc下正常问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Tue, 09 Nov 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E6%B8%B2%E6%9F%93%E7%94%BB%E9%9D%A2%E6%95%B0%E6%8D%AE%E6%9D%82%E4%B9%B1%E4%BD%86renderdoc%E4%B8%8B%E6%AD%A3%E5%B8%B8%E9%97%AE%E9%A2%98/</guid>
+      <description>主要原因总结如下： RenderDoc在每个Pass后会强制把FrameBuffer存储下来方便profile可视化每个drawcall的数据</description>
+    </item>
+    
+    <item>
+      <title>Vulkan异步队列与异步纹理上传</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/</link>
+      <pubDate>Sun, 17 Oct 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E5%BC%82%E6%AD%A5%E9%98%9F%E5%88%97%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BA%B9%E7%90%86%E4%B8%8A%E4%BC%A0/</guid>
+      <description>Vulkan 常用的队列族有以下四种： VK_QUEUE_GRAPHICS_BIT 图形队列族 VK_QUEUE_COMPUTE_BIT 计算队列族 VK_QUEUE_TRANSFER_BIT 传输队列族 VK_QUEUE_SPARSE_BINDING_BIT 稀疏绑定队列族 基本上，现在机器的图形卡基本都含有（1、2、3）这些独立的队列</description>
+    </item>
+    
+    <item>
+      <title>Mipmap颤动的AlphaClip解决边缘杂色问题</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mipmap%E9%A2%A4%E5%8A%A8%E7%9A%84alphaclip%E8%A7%A3%E5%86%B3%E8%BE%B9%E7%BC%98%E6%9D%82%E8%89%B2%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Thu, 07 Oct 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mipmap%E9%A2%A4%E5%8A%A8%E7%9A%84alphaclip%E8%A7%A3%E5%86%B3%E8%BE%B9%E7%BC%98%E6%9D%82%E8%89%B2%E9%97%AE%E9%A2%98/</guid>
+      <description>有一种奇怪的现象： 在我的游戏引擎中有一种奇怪的现象，在BaseColor调试开启时： 我把它称做边缘杂色错误。 在Shader中将Clip阈值提</description>
+    </item>
+    
+    <item>
+      <title>Vulkan实现Sample Distribution Shadow Maps</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/</link>
+      <pubDate>Tue, 21 Sep 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/sampledistributionshadowmaps/</guid>
+      <description>Sample Distribution Shadow Maps(SDSM) 和Cascade Shadow Map原理基本一模一样。但SDSM凭借其动态划分Casacde深度优势效果远胜于 CascadeShadowMap。</description>
+    </item>
+    
+    <item>
+      <title>Vulkan CascadeShadowMap中的常见问题与解决方案</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/</link>
+      <pubDate>Sun, 11 Jul 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan-cascadeshadowmap%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88/</guid>
+      <description>在先前的Vulkan CascadeShadowMap功能开发过程中，做了一个快速的CascadeShadowmap版本，其中还存在不少问题，</description>
+    </item>
+    
+    <item>
+      <title>VkWriteDescriptorSet内存堆释放问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Sat, 10 Jul 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vkwritedescriptorset%E5%86%85%E5%AD%98%E5%A0%86%E9%87%8A%E6%94%BE%E9%97%AE%E9%A2%98/</guid>
+      <description>Vulkan更新描述符集信息时需要填写VkWriteDescriptorSet结构体，然后调用vkUpdateDescriptorSets将</description>
+    </item>
+    
+    <item>
+      <title>大型场景下的Vulkan CascadeShadowMap功能开发</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/</link>
+      <pubDate>Thu, 01 Jul 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E5%A4%A7%E5%9E%8B%E5%9C%BA%E6%99%AF%E4%B8%8B%E7%9A%84vulkan-cascadeshadowmap%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91/</guid>
+      <description>亚马逊开源的Bistro场景大小超过了300m x 300m。先前单纯ShadowMap算法已经无法满足如此大的场景阴影表现需求，就算单张Sha</description>
+    </item>
+    
+    <item>
+      <title>UE4.26 ILC加载与渲染</title>
+      <link>/post/unreal/ue4.26-ilc%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E4%B8%8E%E6%B8%B2%E6%9F%93/</link>
+      <pubDate>Thu, 10 Jun 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue4.26-ilc%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E4%B8%8E%E6%B8%B2%E6%9F%93/</guid>
+      <description>建议放大120%观看。这篇博文主要是UE4 ILC的工程逻辑分析，主要帮助想要改ILC（TOD）的人快速了解整个流程，不太涉及到数学相关知识。</description>
+    </item>
+    
+    <item>
+      <title>UE4.26 Lightmap从烘焙到渲染</title>
+      <link>/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/</link>
+      <pubDate>Sun, 30 May 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/</guid>
+      <description>这篇博文主要是UE4 Lightmap的工程逻辑分析，主要帮助想要改Lightmap（TOD）的人快速了解整个流程，不太涉及到数学相关知识。 U</description>
+    </item>
+    
+    <item>
+      <title>Vulkan中的实时软阴影与硬件优化</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/</link>
+      <pubDate>Thu, 29 Apr 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/vulkan%E4%B8%AD%E7%9A%84%E5%AE%9E%E6%97%B6%E8%BD%AF%E9%98%B4%E5%BD%B1%E4%B8%8E%E7%A1%AC%E4%BB%B6%E4%BC%98%E5%8C%96/</guid>
+      <description>ShadowMap算法需要解决阴影失真（Shadow Acne）和阴影抗锯齿问题，前者可以通过 shadow bias 解决，后者可以使用自定义滤波器如pcf、vs</description>
+    </item>
+    
+    <item>
+      <title>使用用SpirV-Cross提取反射信息自动构建DrawCommand</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/</link>
+      <pubDate>Wed, 14 Apr 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E4%B8%80%E7%A7%8D%E7%AE%80%E5%8D%95%E7%9A%84vulkan-mesh-draw%E6%A1%86%E6%9E%B6%E8%AE%BE%E8%AE%A1/</guid>
+      <description>Vulkan准备一次MeshDrawCommand非常麻烦，要写很多代码，这时候一种可自适应性的、自动填充pipeline和vao的Mesh</description>
+    </item>
+    
+    <item>
+      <title>UE4移动端中的两种Resolve</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/</link>
+      <pubDate>Sun, 21 Mar 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/ue4%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B8%B2%E6%9F%93%E5%99%A8%E4%B8%AD%E7%9A%84%E4%B8%A4%E7%A7%8Dreslove/</guid>
+      <description>一种是 MSAA Resolve，原因是MultiSample（过采样）的RenderBuffer需要经过一些加权处理（重采样）才能转换为不带MSAA</description>
+    </item>
+    
+    <item>
+      <title>两种好用的全屏Quad绘制方法</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%A4%E7%A7%8D%E8%8A%B1%E5%93%A8%E4%BD%86%E5%AE%9E%E7%94%A8%E7%9A%84%E5%85%A8%E5%B1%8Fquad%E7%BB%98%E5%88%B6%E6%96%B9%E6%B3%95/</link>
+      <pubDate>Sun, 21 Mar 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E4%B8%A4%E7%A7%8D%E8%8A%B1%E5%93%A8%E4%BD%86%E5%AE%9E%E7%94%A8%E7%9A%84%E5%85%A8%E5%B1%8Fquad%E7%BB%98%E5%88%B6%E6%96%B9%E6%B3%95/</guid>
+      <description>后期处理时经常要用到全屏Quad渲染，最简单的方法是绘制两个三角形拼成一个全屏的quad，这个不用思考太多。 另外一种则是绘制一个足够覆盖整个</description>
+    </item>
+    
+    <item>
+      <title>地形纹理拼接混合实现更多的地形细节</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%9C%B0%E5%9B%BE%E7%BA%B9%E7%90%86%E6%8B%BC%E6%8E%A5%E6%B7%B7%E5%90%88%E5%AE%9E%E7%8E%B0%E6%9B%B4%E5%A4%9A%E7%9A%84%E5%9C%B0%E5%BD%A2%E7%BB%86%E8%8A%82/</link>
+      <pubDate>Sun, 06 Dec 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%9C%B0%E5%9B%BE%E7%BA%B9%E7%90%86%E6%8B%BC%E6%8E%A5%E6%B7%B7%E5%90%88%E5%AE%9E%E7%8E%B0%E6%9B%B4%E5%A4%9A%E7%9A%84%E5%9C%B0%E5%BD%A2%E7%BB%86%E8%8A%82/</guid>
+      <description>把多个地形纹理合并成图集，渲染时采样对应索引混合，可以做到减少带宽消耗的同时实现丰富的地形纹理混合细节。 其实这是GPU Pro2上详细分享的老</description>
+    </item>
+    
+    <item>
+      <title>TextureCache Miss问题</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/texturecache-miss%E9%97%AE%E9%A2%98/</link>
+      <pubDate>Thu, 03 Dec 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/texturecache-miss%E9%97%AE%E9%A2%98/</guid>
+      <description>之前做地形纹理拼接时遇到大量的Texture Cache Miss问题，导致着色程序的性能下降，正好周末有空可以看这个论文：http://fileadm</description>
+    </item>
+    
+    <item>
+      <title>UE4卡通渲染尝试</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/ue4%E5%8D%A1%E9%80%9A%E6%B8%B2%E6%9F%93%E5%B0%9D%E8%AF%95/</link>
+      <pubDate>Thu, 26 Nov 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/ue4%E5%8D%A1%E9%80%9A%E6%B8%B2%E6%9F%93%E5%B0%9D%E8%AF%95/</guid>
+      <description>这周在捣鼓UE4里的卡通渲染，我已经好久没有接触过卡通渲染了，之前都在弄UE4引擎相关的事情，在离屏特效功能弄好后，正好有空来搞这个UE4的</description>
+    </item>
+    
+    <item>
+      <title>UE4.22移动端降分辨率离屏半透明渲染的坑</title>
+      <link>/post/unreal/ue4.22%E9%99%8D%E5%88%86%E8%BE%A8%E7%8E%87%E7%A6%BB%E5%B1%8F%E5%8D%8A%E9%80%8F%E6%98%8E%E6%B8%B2%E6%9F%93%E7%9A%84%E5%9D%91/</link>
+      <pubDate>Mon, 23 Nov 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue4.22%E9%99%8D%E5%88%86%E8%BE%A8%E7%8E%87%E7%A6%BB%E5%B1%8F%E5%8D%8A%E9%80%8F%E6%98%8E%E6%B8%B2%E6%9F%93%E7%9A%84%E5%9D%91/</guid>
+      <description>上周着力于降分辨率离屏渲染，为啥是“降分辨率离屏半透明渲染”而不是“降分辨率离屏特效渲染”呢？因为根本没办法解决半透明排序的问题。离屏就意味</description>
+    </item>
+    
+    <item>
+      <title>虚幻4捏脸的ShadowMap投影包围盒算法再改进</title>
+      <link>/post/unreal/ue4.22-%E9%92%88%E5%AF%B9%E6%8D%8F%E8%84%B8%E7%9A%84shadowmap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92%E7%AE%97%E6%B3%95%E5%86%8D%E6%94%B9%E8%BF%9B/</link>
+      <pubDate>Wed, 18 Nov 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue4.22-%E9%92%88%E5%AF%B9%E6%8D%8F%E8%84%B8%E7%9A%84shadowmap%E6%8A%95%E5%BD%B1%E5%8C%85%E5%9B%B4%E7%9B%92%E7%AE%97%E6%B3%95%E5%86%8D%E6%94%B9%E8%BF%9B/</guid>
+      <description>在之前的ShadowMap投影矩阵包围球构造方式改成Fit To Scene后，很好的满足了少量角色投影展示的渲染需求： 左边原生的阴影投影特意把D</description>
+    </item>
+    
+    <item>
+      <title>虚幻4.22移动端实现GrabPass抓屏</title>
+      <link>/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E5%AE%9E%E7%8E%B0grabpass%E6%8A%93%E5%B1%8F/</link>
+      <pubDate>Fri, 13 Nov 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E5%AE%9E%E7%8E%B0grabpass%E6%8A%93%E5%B1%8F/</guid>
+      <description>最近几天在给UE4.22加上GrabPass这个功能。 目前UE4折射材质在后处理阶段单独渲染一次扭曲VectorPass，然后再和Scene</description>
+    </item>
+    
+    <item>
+      <title>虚幻引擎4.22手机添加一次Z-PrePass</title>
+      <link>/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B7%BB%E5%8A%A0%E4%B8%80%E6%AC%A1z-prepass/</link>
+      <pubDate>Wed, 21 Oct 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%B7%BB%E5%8A%A0%E4%B8%80%E6%AC%A1z-prepass/</guid>
+      <description>得益于UE4 MeshDrawCommand架构的优良设计，为引擎渲染管线添加一个Pass变得非常的简单。在看完虚幻官方给出的文档后，我开始修</description>
+    </item>
+    
+    <item>
+      <title>虚幻4移动端级联阴影ShadowMap使用率过低问题修复</title>
+      <link>/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E7%BA%A7%E8%81%94%E9%98%B4%E5%BD%B1shadowmap%E4%BD%BF%E7%94%A8%E7%8E%87%E8%BF%87%E4%BD%8E%E9%97%AE%E9%A2%98%E4%BF%AE%E5%A4%8D/</link>
+      <pubDate>Sat, 17 Oct 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/unreal/ue4.22%E7%A7%BB%E5%8A%A8%E7%AB%AF%E7%BA%A7%E8%81%94%E9%98%B4%E5%BD%B1shadowmap%E4%BD%BF%E7%94%A8%E7%8E%87%E8%BF%87%E4%BD%8E%E9%97%AE%E9%A2%98%E4%BF%AE%E5%A4%8D/</guid>
+      <description>在微软家的这篇 [Common Techniques to Improve Shadow Depth Maps]文章中，详细讨论Shadow Map的各种问题和解决方案，里面的摩尔纹、Peter Pan、抗锯齿等常规问题</description>
+    </item>
+    
+    <item>
+      <title>UE4.26 移动端手机Tiled Resolve性能记录</title>
+      <link>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/</link>
+      <pubDate>Fri, 14 Aug 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/%E7%A7%BB%E5%8A%A8%E7%AB%AF%E6%89%8B%E6%9C%BAresolve%E6%80%A7%E8%83%BD%E8%AE%B0%E5%BD%95/</guid>
+      <description>Forward管线，ShadowDepth Map Resolve，骁龙865: 2048 * 2480, Reslove Time 5.1ms. 1024 * 1024, Resolve Time 1.21ms. 768 * 768, Resolve Time 0.61ms.</description>
+    </item>
+    
+    <item>
+      <title>简单翻页效果</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0/</link>
+      <pubDate>Fri, 03 Jul 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E7%AE%80%E6%98%93%E7%BF%BB%E9%A1%B5%E6%95%88%E6%9E%9C%E5%AE%9E%E7%8E%B0/</guid>
+      <description>翻页效果主要分为顶点着色器动画和UI遮罩动画。我简单的在Unity上分别实现这两个，然后移植到UE4上面去。 顶点着色器动画 顶点着色器实现实际</description>
+    </item>
+    
+  </channel>
+</rss>

@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 更快更好的PCSS | 月光下的旅行。 </title>
+  <meta name="description" content="更快更好的PCSS">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/categories/%E5%8A%A8%E7%94%BB"> Animation</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93"> Rendering</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutang98" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >更快更好的PCSS</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2024-10-07T00:00:00Z">2024年10月7日</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>PCSS令人诟病的一点是：需要大量的PCF采样，才能得到一个较好的软影效果。</p>
+<p>SATVSM/VSSM使用Sum-Area-Table表代替PCF采样，虽然稍微（Cascade Shadow Map的SAT表构建和采样也会花费不少时间）减缓了性能问题，但它的效果非常的差。</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007110544361.png" alt="Image"></p>
+<p>究其原因，SAT只能实现Box Filter，而且由于它的特性，仅能搭配VSM的切比雪夫不等式使用。最终得到的软影，既有VSM的漏光问题，也显露出一种廉价感。</p>
+<p>PCSS使用的PCF采样更加符合物理规则。阳光透过树叶的间隙，甚至可以投影圆形的焦散，非常的好看：</p>
+<p><img src="/images/FasterPCSS_assets/s.gif" alt="Image"></p>
+<p>没有人能在看到这种画面后再次拒绝PCSS。我开始测试一些加速PCSS的算法。</p>
+<p>本文依次按照如下顺序展开：</p>
+<ol>
+<li>软影遮罩。</li>
+<li>光照结果指导PCSS提前退出。</li>
+<li>同心圆式采样缓存复用。</li>
+<li>可变采样率。</li>
+<li>其它细节。</li>
+<li>最终性能。</li>
+</ol>
+<h2 id="软影遮罩">软影遮罩</h2>
+<p>原神使用一张近似的软影Mask来标记PCSS区域，跳过非软影区域的PCSS计算。</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007112449735.png" alt="Image"></p>
+<p>在屏幕软影占比大的时候，这种做法非常容易出Bug，Mask贴图并不能全部覆盖到当前软影。</p>
+<p>我的做法是：</p>
+<p>在当前帧的PCSS计算完成后，统计8x8 Tile内的阴影讯息，可以得到一张免费的软影Mask，在下一帧的PCSS计算前，（双线性）采样当前帧得到的Mask，就可以得到更加准确的软影Mask了。</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007113443016.png" alt="Image"></p>
+<p><img src="/images/FasterPCSS_assets/image-20241007113413305.png" alt="Image"></p>
+<p>如图所示，仅泛红区域需要软影计算。</p>
+<p>这张Mask可以在PCSS计算完成后立即计算出来（同一个Pass内），基本是零性能消耗：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007113654391.png" alt="Image"></p>
+<p>因为是上一帧的阴影Mask，当前帧的PCSS计算采样前，还需要重投影到上一帧：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007114554019.png" alt="Image"></p>
+<p>历史帧的软影Mask可能会因为各种问题失效，如：Camera Cut、Depth Dissolve、灯光旋转等。</p>
+<p>所以还做了一个Wave内的保底软影Mask:</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007114913649.png" alt="Image"></p>
+<p>与历史帧的Mask相比，这个Wave内的软影Mask相对保守，但能缓解历史帧软影Mask失效的画面错误问题：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007115209274.png" alt="Image"></p>
+<p>通常情况下软影Mask能把软影计算量减少50%以上，一些较好的情景下甚至可以达到90%+的性能优化。</p>
+<h2 id="光照结果指导pcss提前退出">光照结果指导PCSS提前退出</h2>
+<p>常规引擎中，阴影在光照前计算完成。</p>
+<p>考虑光照方程的特性：把Visiblity和Radiance分开来，先计算完Radiance部分存到RT中，根据着色模型的特性，若与Visiblity的合成方式为<strong>乘法</strong>，即可跳过Radiance为零的像素区域：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007120252759.png" alt="Image"></p>
+<p>如下图所示，仅白色区域需要阴影评估：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007120445933.png" alt="Image"></p>
+<p>该做法需要分离Lighting Pass，在一些引擎中可能做起来有点麻烦，但效果也是肉眼可见的，能减少不少像素的阴影计算。</p>
+<h2 id="同心圆式采样缓存复用">同心圆式采样缓存复用</h2>
+<p>该想法来自Crytek的一次分享，他们的PCSS的Blocker Search和PCF Filter使用相同的泊松圆盘（按半径排序）。Blocker Search加载全部的采样，得到软影半径后，可以得知PCF Filter的泊松圆盘半径。</p>
+<p>他们直接在PCF采样阶段复用Blocker Search缓存下来的阴影采样结果，仅需软影半径内的采样。</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007121536261.png" alt="Image"></p>
+<p>红框处的字体非常容易搞混，一开我以为他们缓存了全部采样深度到Shared Memory中，但仔细想想根本没有这么多LDS内存可用。</p>
+<p>因此，在Blocker Search阶段时，<strong>直接计算该采样点的阴影结果，每一个采样点仅需1 Bit就能表示</strong>，这样，32个采样点的阴影结果仅需一个uint就能缓存下来，PCF阶段则直接使用前面缓存下来的阴影结果。</p>
+<p>对于采样模式，我更加倾向于使用Vogel圆盘，同时也可以简单确定在某个软影半径下，PCF应该复用那些阴影缓存结果：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007123123531.png" alt="Image"></p>
+<p>这种做法性能良好，但软影效果差：大量采样点分配到软影外侧，供Blocker Search使用，最终PCF分配到的采样点很少。</p>
+<h2 id="可变采样率">可变采样率</h2>
+<p>Variable Rate Shading(VRS)的思想现在根深于我的脑中，每次性能优化我都优先考虑该做法，PCSS也不例外。</p>
+<p>一种直观的想法是：PCF阶段的采样数根据软影的半径动态改变，半影多的地方采样多，半影少的地方采样少。</p>
+<p>在此之前还需要一种可以动态改变采样数的圆盘分布，此处Vogel圆盘依然胜任。</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007124143477.png" alt="Image"></p>
+<p>这种可变采样率做法可以大幅减少接触硬阴影处的PCF采样数：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007125028689.png" alt="Image"></p>
+<p>如图所示，颜色越深的地方，采样数越多。（非半影区域的采样基本很少）</p>
+<h2 id="其它">其它</h2>
+<p>PCSS结合CSM有一些小问题需要处理。</p>
+<p>首先是Cascade过渡，业界常用做法是计算两次阴影，然后是用Lerp插值过渡。由于PCSS消耗太高，这种做法显然不符合要求。</p>
+<p>我使用Dither As Lerp的思想，在Cascade过渡处抖动Cascade级别：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007133742585.png" alt="Image"></p>
+<p>这种做法可以将生硬的Cascade级别过渡转换成高频噪声过渡，搭配TAA的话基本媲美Lerp效果，同时还能保持较高的效率。</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007134048214.png" alt="Image"></p>
+<p>其次，由于不同级别的Cascade的覆盖范围不同，对应的ShadowDepth纹素覆盖范围也不一样，所以要用Cascade覆盖区域的半径去缩放PCSS Search Blocker的半径、PCSS PCF Filter的半径，Bias值，使得Cascade级别过渡自然：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007134448526.png" alt="Image"></p>
+<p>另外，由于PCF的特性，对于大范围的PCF filter，若使用相同的Bias可能会在边缘出现条带状的Bug（在许多PCSS实现中都有出现）。我们应该根据PCF的半径，再额外动态调整它的Bias:</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007135045606.png" alt="Image"></p>
+<p>值得注意的是，此处PCF的Bias不关心Cascade的半径缩放：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007135247274.png" alt="Image"></p>
+<p>最后，Blocker Search的采样也稍有讲究，正常情况下，Blocker Search的采样半径要达到最大半影区域。这导致我们要分配大量的采样预算给它才能得到一个相对无噪的结果。</p>
+<p>如下图所示：过大的采样半径导致BlockerSearch结果非常噪：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007140416227.png" alt="Image"></p>
+<p>一种简单的想法是：调低Light Size，同时对计算出来的半影半径做调整（Power操作啥的），使得我们在较小的Blocker Search范围内能得到更多的半影。</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007140819140.png" alt="Image"></p>
+<p>这样做，虽然可以稍微缓解Blocker Search的噪声，但不利于半影和硬阴影的叠加区域过渡：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007141119105.png" alt="Image"></p>
+<p>产生这种问题的原因是PCF采样超出了Blocker Search的范围，导致接触地方的阴影过软。</p>
+<p>另外一种想法是：缩放Blocker Search的区域，同时限制PCF的最大采样范围：</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007141347822.png" alt="Image"></p>
+<p><img src="/images/FasterPCSS_assets/image-20241007141357680.png" alt="Image"></p>
+<p>这样做，既能保证PCF的采样范围均为Blocker Search计算出来的结果之内，同时也能减少Blocker Search的采样半径减少噪声。</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007141600743.png" alt="Image"></p>
+<h2 id="最终性能">最终性能</h2>
+<p>在RTX3070Ti下渲染4k。PCF最多采样32次（Gather Load）, Blocker Search 最多采样16次。</p>
+<p>最差情况（满屏半影）：（1.45ms）</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007132959289.png" alt="Image"></p>
+<p>正常视角：（0.81ms）</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007133054264.png" alt="Image"></p>
+<p>影区视角：（0.65ms)</p>
+<p><img src="/images/FasterPCSS_assets/image-20241007133152090.png" alt="Image"></p>
+
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>相关文章</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/">MyNanite: 从零开始实现Nanite风格网格渲染器</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/">UE5.32里的ShaderUniformBufferBinding崩溃</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/">UE5.32抖动半透明兼容TAA时序超分算法改进</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/">C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E6%9B%9D%E5%85%89%E8%9E%8D%E5%90%88%E5%9C%A8%E6%B8%B8%E6%88%8F%E4%B8%AD%E5%BC%95%E5%85%A5%E6%9B%B4%E5%A4%9A%E7%9A%84%E8%89%B2%E5%BD%A9/">为游戏引入更多的色彩：实时曝光融合</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2024 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

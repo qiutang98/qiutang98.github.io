@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="Hugo 0.96.0" />
-  <title> UE5.32抖动半透明兼容TAA时序超分算法的改进方法 | 月光下的旅行。 </title>
+  <title> UE5.32抖动半透明兼容TAA时序超分算法改进 | 月光下的旅行。 </title>
   <meta name="description" content="UE5.32抖动半透明兼容TAA时序超分算法的改进方法">
   <link rel="stylesheet" href="/css/simpleness.css">
   <link rel="canonical" href="/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/">
@@ -23,13 +23,11 @@
     </div>
     <div class="nav-item nav-menu">
       
-      <a href="/categories/unreal"> Unreal</a>
-      
-      <a href="/categories/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api"> Hardware</a>
-      
-      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91"> Rendering</a>
-      
       <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/categories/%E5%8A%A8%E7%94%BB"> Animation</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93"> Rendering</a>
       
       <a href="/projects/"> Projects</a>
       
@@ -48,10 +46,10 @@
   
 <article class="post">
   <header class="post-header">
-    <h1 style="text-align: center;" >UE5.32抖动半透明兼容TAA时序超分算法的改进方法</h1>
+    <h1 style="text-align: center;" >UE5.32抖动半透明兼容TAA时序超分算法改进</h1>
     <div class="post-metadata">
     
-      <time datetime="2024-02-18T00:00:00Z">February 18, 2024</time> &nbsp; 
+      <time datetime="2024-02-18T00:00:00Z">2024年2月18日</time> &nbsp; 
     
     
     
@@ -60,7 +58,7 @@
     
       <i class="fas fa-folder"></i>
       
-      <a href="/categories/unreal">Unreal</a>
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
       &nbsp;
       
     
@@ -173,35 +171,32 @@
         <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
         &nbsp;
       
-        <a href="/tags/unreal">Unreal</a>
-        &nbsp;
-      
     </div>
     
 
     
     
     <div class="related-posts">
-      <h4>Related Posts</h4>
+      <h4>相关文章</h4>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/">UE4.27/5.0 Async Compute异步计算优化简易教程</a>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/">C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题</a>
       <br>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">UE4.27实现彩虹六号中的ShadowCache HZB Culling</a>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E6%9B%9D%E5%85%89%E8%9E%8D%E5%90%88%E5%9C%A8%E6%B8%B8%E6%88%8F%E4%B8%AD%E5%BC%95%E5%85%A5%E6%9B%B4%E5%A4%9A%E7%9A%84%E8%89%B2%E5%BD%A9/">为游戏引入更多的色彩：实时曝光融合</a>
       <br>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/unreal/ue4.26-ilc%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E4%B8%8E%E6%B8%B2%E6%9F%93/">UE4.26 ILC加载与渲染</a>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/%E5%AE%9E%E6%97%B6%E4%BD%93%E7%A7%AF%E4%BA%91%E6%B8%B2%E6%9F%93/">实时体积云渲染的光照细节</a>
       <br>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/unreal/ue4.26-lightmap%E4%BB%8E%E7%83%98%E7%84%99%E5%88%B0%E6%B8%B2%E6%9F%93/">UE4.26 Lightmap从烘焙到渲染</a>
+      <a href="/post/unreal/ue4.27%E5%92%8Cue5.0-asynccompute%E4%BC%98%E5%8C%96/">UE5.0 AsyncCompute异步计算优化简易教程</a>
       <br>
       
       <i class="fas fa-paperclip"></i>
-      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/ue4%E5%8D%A1%E9%80%9A%E6%B8%B2%E6%9F%93%E5%B0%9D%E8%AF%95/">UE4卡通渲染尝试</a>
+      <a href="/post/unreal/ue4.27shadowcachehzbculling%E7%9A%84%E7%AE%80%E6%98%93%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">UE4.27实现彩虹六号中的Shadow Cache HZB Culling</a>
       <br>
       
     </div>
