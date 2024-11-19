@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Hugo 0.96.0" />
+  <title> 使用Quad指令加速3x3Filter | 月光下的旅行。 </title>
+  <meta name="description" content="使用Quad指令加速3x3Filter">
+  <link rel="stylesheet" href="/css/simpleness.css">
+  <link rel="canonical" href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/wave_accelerate_3x3/">
+  <link rel="alternate" type="application/rss+xml" href="" title="月光下的旅行。">
+  
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+  
+</head>
+<body class="container">
+  <nav class="navigation">
+  <div class="nav-left">
+    
+    <div class="nav-item nav-title">
+      <a href="/"> 月光下的旅行。</a>
+    </div>
+    <div class="nav-item nav-menu">
+      
+      <a href="/categories/dcc"> DCC</a>
+      
+      <a href="/categories/%E5%8A%A8%E7%94%BB"> Animation</a>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93"> Rendering</a>
+      
+      <a href="/projects/"> Projects</a>
+      
+    </div>
+  </div>
+  <div class="nav-item nav-right fontawesome">
+    
+    
+    <a href="https://github.com/qiutang98" target="_blank">
+      <i title="GitHub" class="fab fa-github"></i>
+    </a>
+    
+  </div>
+</nav>
+
+  
+<article class="post">
+  <header class="post-header">
+    <h1 style="text-align: center;" >使用Quad指令加速3x3Filter</h1>
+    <div class="post-metadata">
+    
+      <time datetime="2024-11-19T00:00:00Z">2024年11月19日</time> &nbsp; 
+    
+    
+    
+    
+    
+    
+      <i class="fas fa-folder"></i>
+      
+      <a href="/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+      &nbsp;
+      
+    
+    </div>
+  </header>
+
+  
+
+  <div class="post-text">
+    <p>​
+做图像处理时经常要做3x3小范围的滤波，这种情况下，使用LDS + GroupMemoryBarrierWithGroupSync均摊的优化不一定会有收益。</p>
+<p>究其原因：3x3范围内，本身的Texture Cache命中率就很高，不会出现TexelLoad的瓶颈；其次，Shader编译器在O3及以上的优化下，会做指令重排来最大化Hide Latency，而我们加入的GroupMemoryBarrierWithGroupSync指令则打破这一优化，最终编译出来的指令额外多了几处s_wait，最终执行性能不升反降。</p>
+<p>但借助SM6.0的Quad指令，可以写出所有情况下均为正收益的3x3滤波优化。</p>
+<p>考察像素着色器情况：</p>
+<p>像素着色器2x2为一个Quad执行，它的空间分布如下：</p>
+<p><img src="/images/wave_accelerate_3x3_assets/image-20241119123225287.png" alt="Image"></p>
+<p>假设我们需要对像素0做3x3的滤波，它要处理的像素空间分布如下，一共九次计算（红色代表本线程的计算）：</p>
+<p><img src="/images/wave_accelerate_3x3_assets/image-20241119122533393.png" alt="Image"></p>
+<p>SM6.0的Quad指令为我们提供了访问同一组Quad内其它Lane内容的能力。</p>
+<p>比如：</p>
+<ol>
+<li>在像素0处使用QuadReadAcrossX即可得到像素1处的值；在像素1处使用则可得到0处的值。</li>
+<li>在像素0处使用QuadReadAcrossY可以得到像素2处的值；在像素2处使用则可得到0处的值。</li>
+<li>在像素0处使用QuadReadAcrossDiagonal得到像素3处的值；在像素3处使用则可得到0处的值。</li>
+</ol>
+<p>因此，如果每个像素都计算了它本身位置的结果，那么结果可以直接通过Quad指令共享给其它线程。</p>
+<p>此时，像素0处的计算分布如下（绿色代表通过Quad指令得到的共享结果）：</p>
+<p><img src="/images/wave_accelerate_3x3_assets/image-20241119123551731.png" alt="Image"></p>
+<p>更进一步，若Quad内每个像素都按照如下的模式采样，那么每个像素需要计算4次：</p>
+<p><img src="/images/wave_accelerate_3x3_assets/image-20241119123832166.png" alt="Image"></p>
+<p>像素0处的3x3Filter计算，E处可以直接通过D处的QuadReadAcrossY得到，同理，C处可以通过B处的QuadReadAcrossX得到；像素0本身仅需计算A, B, D, 0这4个位置的结果即可。</p>
+<p><img src="/images/wave_accelerate_3x3_assets/image-20241119124100299.png" alt="Image"></p>
+<p>在计算着色器中，我们还需要对线程组做Quad重映射，得到类似像素着色器类似的调度分布。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#75715e">//  8x8 Output:
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  00 01 08 09 10 11 18 19
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  02 03 0a 0b 12 13 1a 1b
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  04 05 0c 0d 14 15 1c 1d
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  06 07 0e 0f 16 17 1e 1f
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  20 21 28 29 30 31 38 39
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  22 23 2a 2b 32 33 3a 3b
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  24 25 2c 2d 34 35 3c 3d
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  26 27 2e 2f 36 37 3e 3f
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 8x8 情况
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>uint2 <span style="color:#a6e22e">remap8x8</span>(uint tid)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> uint2((((tid <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">2</span>) <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">0x7</span>) <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">0xFFFE</span>) <span style="color:#f92672">|</span> (tid <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">0x1</span>), 
+</span></span><span style="display:flex;"><span>                 ((tid <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">1</span>) <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">0x3</span>) <span style="color:#f92672">|</span> (((tid <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">3</span>) <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">0x7</span>) <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">0xFFFC</span>));
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>[numthreads(<span style="color:#ae81ff">64</span>, <span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">1</span>)]
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> blurShadowMask(
+</span></span><span style="display:flex;"><span>    uint2 workGroupId : SV_GroupID, uint localThreadIndex : SV_GroupIndex)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    int2 dispatchThreadId <span style="color:#f92672">=</span> int2(workGroupId <span style="color:#f92672">*</span> <span style="color:#ae81ff">8</span> <span style="color:#f92672">+</span> remap8x8(localThreadIndex));
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 通常情况
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>uint2 <span style="color:#a6e22e">ZOrder2D</span>(uint Index, <span style="color:#66d9ef">const</span> uint SizeLog2)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	uint2 Coord <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; 
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">for</span> (uint i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> SizeLog2; i<span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>	{
+</span></span><span style="display:flex;"><span>		Coord.x <span style="color:#f92672">|=</span> ((Index <span style="color:#f92672">&gt;&gt;</span> (<span style="color:#ae81ff">2</span> <span style="color:#f92672">*</span> i <span style="color:#f92672">+</span> <span style="color:#ae81ff">0</span>)) <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">0x1</span>) <span style="color:#f92672">&lt;&lt;</span> i;
+</span></span><span style="display:flex;"><span>		Coord.y <span style="color:#f92672">|=</span> ((Index <span style="color:#f92672">&gt;&gt;</span> (<span style="color:#ae81ff">2</span> <span style="color:#f92672">*</span> i <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>)) <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">0x1</span>) <span style="color:#f92672">&lt;&lt;</span> i;
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">return</span> Coord;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>[numthreads(TILE_SIZE, TILE_SIZE, <span style="color:#ae81ff">1</span>)]
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">void</span> mainCS(uint2 workGroupId : SV_GroupID, uint localThreadIndex : SV_GroupIndex)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>	uint2 dispatchThreadId <span style="color:#f92672">=</span>  workGroupId <span style="color:#f92672">*</span> uint2(TILE_SIZE, TILE_SIZE));
+</span></span><span style="display:flex;"><span>    dispatchThreadId <span style="color:#f92672">+=</span> ZOrder2D(localThreadIndex, log2(TILE_SIZE);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>最终的计算代码如下所示：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">const</span> int2 k3x3QuadSampleSigned[<span style="color:#ae81ff">4</span>] <span style="color:#f92672">=</span> 
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    int2(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>    int2(<span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>, <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>    int2(<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>, <span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>    int2(<span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>, <span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">const</span> int2 k3x3QuadSampleOffset[<span style="color:#ae81ff">4</span>] <span style="color:#f92672">=</span> 
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    int2(<span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>), <span style="color:#75715e">// Central
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    int2(<span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>    int2(<span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">1</span>),
+</span></span><span style="display:flex;"><span>    int2(<span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">0</span>),
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// Example usage:
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>uint quadIndex <span style="color:#f92672">=</span> WaveGetLaneIndex() <span style="color:#f92672">%</span> <span style="color:#ae81ff">4</span>;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> shadowMask[<span style="color:#ae81ff">9</span>];
+</span></span><span style="display:flex;"><span>[unroll(<span style="color:#ae81ff">4</span>)]
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">4</span>; i <span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    int2 samplePos <span style="color:#f92672">=</span> workPos <span style="color:#f92672">+</span> 
+</span></span><span style="display:flex;"><span>        k3x3QuadSampleOffset[i] <span style="color:#f92672">*</span> k3x3QuadSampleSigned[quadIndex];
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    samplePos <span style="color:#f92672">=</span> clamp(samplePos, <span style="color:#ae81ff">0</span>, pushConsts.dim <span style="color:#f92672">-</span> <span style="color:#ae81ff">1</span>);
+</span></span><span style="display:flex;"><span>    shadowMask[i] <span style="color:#f92672">=</span> shadowMaskTexture[samplePos];
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>shadowMask[<span style="color:#ae81ff">4</span>] <span style="color:#f92672">=</span>        QuadReadAcrossX(shadowMask[<span style="color:#ae81ff">0</span>]);
+</span></span><span style="display:flex;"><span>shadowMask[<span style="color:#ae81ff">5</span>] <span style="color:#f92672">=</span>        QuadReadAcrossY(shadowMask[<span style="color:#ae81ff">0</span>]);
+</span></span><span style="display:flex;"><span>shadowMask[<span style="color:#ae81ff">6</span>] <span style="color:#f92672">=</span> QuadReadAcrossDiagonal(shadowMask[<span style="color:#ae81ff">0</span>]);
+</span></span><span style="display:flex;"><span>shadowMask[<span style="color:#ae81ff">7</span>] <span style="color:#f92672">=</span> QuadReadAcrossX(shadowMask[<span style="color:#ae81ff">2</span>]);
+</span></span><span style="display:flex;"><span>shadowMask[<span style="color:#ae81ff">8</span>] <span style="color:#f92672">=</span> QuadReadAcrossY(shadowMask[<span style="color:#ae81ff">3</span>]);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">float</span> shadowMaskSum <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0</span>;
+</span></span><span style="display:flex;"><span>[unroll(<span style="color:#ae81ff">9</span>)]
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">int</span> i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">9</span>; i <span style="color:#f92672">++</span>)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    shadowMaskSum <span style="color:#f92672">+=</span> shadowMask[i];
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div>
+  </div>
+
+  <footer class="post-footer">
+    
+
+    
+    <div class="post-tags">
+      <i class="fas fa-tags"></i>
+      
+        <a href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93">实时渲染</a>
+        &nbsp;
+      
+    </div>
+    
+
+    
+    
+    <div class="related-posts">
+      <h4>相关文章</h4>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/">更快更好的PCSS</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/">MyNanite: 从零开始实现Nanite风格网格渲染器</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue5.32%E9%87%8C%E7%9A%84shader-attempted-to-bind-uniform-buffer...%E5%B4%A9%E6%BA%83/">UE5.32里的ShaderUniformBufferBinding崩溃</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/unreal/ue5.32%E6%8A%96%E5%8A%A8%E5%8D%8A%E9%80%8F%E6%98%8E%E5%85%BC%E5%AE%B9taa%E6%97%B6%E5%BA%8F%E8%B6%85%E5%88%86%E7%AE%97%E6%B3%95/">UE5.32抖动半透明兼容TAA时序超分算法改进</a>
+      <br>
+      
+      <i class="fas fa-paperclip"></i>
+      <a href="/post/%E5%9B%BE%E5%BD%A2%E7%A1%AC%E4%BB%B6api/c&#43;&#43;%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90%E5%AF%BC%E8%87%B4%E7%9A%84crc%E4%B8%8Ecityhash%E9%94%99%E8%AF%AF%E9%97%AE%E9%A2%98/">C&#43;&#43;初始化与内存大端对齐导致Memory Hash算法错误问题</a>
+      <br>
+      
+    </div>
+    
+  </footer>
+  
+  <div class="comments">
+  <div class="comments">
+
+
+
+</div>
+  </div>
+</article>
+
+  <div class="foot">
+  
+  &copy;  - 2024 &#183;
+  <a href="/"> 月光下的旅行。 </a>
+  禁止转载
+  <a href="#"><i class="fas fa-chevron-up"></i></a>
+</div>
+</body>
+  <script src="/js/lazyload.min.js"></script>
+<script>
+  var lazyImage = new LazyLoad({container: document.getElementById('article')});
+</script>
+
+
+
+
+</html>

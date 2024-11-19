@@ -3,24 +3,27 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>/categories/</loc>
-    <lastmod>2024-10-07T00:00:00+00:00</lastmod>
+    <lastmod>2024-11-19T00:00:00+00:00</lastmod>
   </url><url>
     <loc>/post/</loc>
-    <lastmod>2024-10-07T00:00:00+00:00</lastmod>
+    <lastmod>2024-11-19T00:00:00+00:00</lastmod>
   </url><url>
     <loc>/tags/</loc>
-    <lastmod>2024-10-07T00:00:00+00:00</lastmod>
+    <lastmod>2024-11-19T00:00:00+00:00</lastmod>
+  </url><url>
+    <loc>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/wave_accelerate_3x3/</loc>
+    <lastmod>2024-11-19T00:00:00+00:00</lastmod>
   </url><url>
     <loc>/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93/</loc>
-    <lastmod>2024-10-07T00:00:00+00:00</lastmod>
+    <lastmod>2024-11-19T00:00:00+00:00</lastmod>
   </url><url>
     <loc>/categories/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93/</loc>
-    <lastmod>2024-10-07T00:00:00+00:00</lastmod>
-  </url><url>
-    <loc>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/</loc>
-    <lastmod>2024-10-07T00:00:00+00:00</lastmod>
+    <lastmod>2024-11-19T00:00:00+00:00</lastmod>
   </url><url>
     <loc>/</loc>
+    <lastmod>2024-11-19T00:00:00+00:00</lastmod>
+  </url><url>
+    <loc>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/</loc>
     <lastmod>2024-10-07T00:00:00+00:00</lastmod>
   </url><url>
     <loc>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/mynanite01_mesh_processor/</loc>

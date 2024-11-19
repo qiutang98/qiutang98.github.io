@@ -7,7 +7,16 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh-cn</language>
     <copyright>[Home](/) &amp;#183; 禁止转载</copyright>
-    <lastBuildDate>Mon, 07 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 19 Nov 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>使用Quad指令加速3x3Filter</title>
+      <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/wave_accelerate_3x3/</link>
+      <pubDate>Tue, 19 Nov 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/wave_accelerate_3x3/</guid>
+      <description>​ 做图像处理时经常要做3x3小范围的滤波，这种情况下，使用LDS + GroupMemoryBarrierWithGroupSync均摊的优化不</description>
+    </item>
+    
     <item>
       <title>更快更好的PCSS</title>
       <link>/post/%E5%AE%9E%E6%97%B6%E6%B8%B2%E6%9F%93%E5%BC%80%E5%8F%91/fasterpcss/</link>
